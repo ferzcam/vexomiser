@@ -64,3 +64,6 @@ exomiser-db/nbactions.xml
 # Python & docs stuff
 .venv/
 docs/_build/
+
+# Evaluation data (lives on Ibex, too large for git)
+data/
