@@ -220,7 +220,12 @@ def main(phenotype_data_dir, track, split):
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
     logger.info("Loading PAVS cases...")
-    cases = load_cases(track)
+    all_cases = load_cases(track)
+
+    # Gene pool is always fixed to all genes across the full dataset
+    # so rankings are comparable across splits
+    eval_genes = sorted(all_cases["gene_symbol"].dropna().unique().tolist())
+    gene_to_index = {g: i for i, g in enumerate(eval_genes)}
 
     if split != "all":
         split_path = os.path.join(DATA_DIR, "splits", f"{split}.tsv")
@@ -230,14 +235,13 @@ def main(phenotype_data_dir, track, split):
                 "Run: uv run python eval/generate_splits.py"
             )
         split_ids = set(pd.read_csv(split_path, sep="\t")["case_id"])
-        cases = cases[cases["case_id"].isin(split_ids)].reset_index(drop=True)
+        cases = all_cases[all_cases["case_id"].isin(split_ids)].reset_index(drop=True)
         logger.info(f"Restricted to '{split}' split: {len(cases)} cases")
+    else:
+        cases = all_cases
 
     gene_entrez = load_gene_entrez_map()
-
-    eval_genes = sorted(cases["gene_symbol"].dropna().unique().tolist())
-    gene_to_index = {g: i for i, g in enumerate(eval_genes)}
-    logger.info(f"Track {track}: {len(cases)} cases, {len(eval_genes)} unique genes")
+    logger.info(f"Track {track}: {len(cases)} cases, {len(eval_genes)} genes in pool")
 
     logger.info("Starting JVM...")
     start_jvm(phenotype_data_dir)
