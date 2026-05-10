@@ -158,6 +158,57 @@ The gene pool is fixed to all 2,258 genes in both cases so results are directly 
 
 ---
 
+## INDIGENA training
+
+INDIGENA uses TransD KGE embeddings on the UPheno ontology graph, augmented with
+gene–phenotype and disease–phenotype associations derived from the training split.
+At inference, each test case is scored against all eval genes using BMA
+(Best-Match Average) over phenotype embeddings — no disease entity is required
+in the graph at test time (inductive).
+
+### Graph structures
+
+| Graph | Additional edges | Notes |
+|-------|-----------------|-------|
+| G1 | UPheno OWL2VecStar projection | HP + MP + UPHENO taxonomy |
+| G2 | gene → HP (training cases) | aggregated HPO terms per causal gene |
+| G3 | disease → HP (training cases) | inductive: test/val diseases excluded |
+| G4 | gene ↔ disease (training cases) | supervised association signal |
+
+**Gene–phenotype associations** are derived solely from training cases: for each
+training case, the case's HPO terms are attributed to its causal gene. This is
+intentionally simple and keeps the model self-contained without external
+databases. The trade-off is that gene-phenotype coverage depends on training-set
+frequency — genes with few training cases get fewer phenotype edges.
+
+### Setup
+
+The training script requires the pre-computed UPheno OWL2VecStar edges from the
+INDIGENA repo and the `indigena` conda environment on the workstation:
+
+```bash
+# On the workstation (10.74.250.168)
+UPHENO_EDGES=~/Git/indigena/data/upheno_owl2vecstar_edges.tsv
+
+~/miniforge3/envs/indigena/bin/python eval/indigena_train.py \
+    --upheno-edges $UPHENO_EDGES \
+    --graph2 --graph3 --graph4 \
+    --track 1 --eval-split test
+```
+
+To evaluate a saved checkpoint without retraining:
+
+```bash
+~/miniforge3/envs/indigena/bin/python eval/indigena_train.py \
+    --upheno-edges $UPHENO_EDGES \
+    --graph2 --graph3 --graph4 \
+    --track 1 --eval-split test --only-eval
+```
+
+Output: `data/results/indigena_transd_track1_graph4_seed0_dim100_bs2048_lr0.001_test.tsv`
+
+---
+
 The Exomiser - A Tool to Annotate and Prioritize Exome Variants
 ===============================================================
 
