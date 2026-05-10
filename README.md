@@ -136,13 +136,25 @@ Each TSV row: `gene_symbol <TAB> case_id <TAB> gene_index <TAB> score_0 ... scor
 
 Metrics computed: MR, MRR, Hits@1, Hits@3, Hits@10, Hits@100, AUC (macro).
 
-### Baseline results (Track 1 — 5,076 cases, 2,258 genes)
+### Baseline results (2,258 genes in pool)
+
+**Full dataset — 5,076 cases**
 
 | Prioritiser | MR | MRR | Hits@1 | Hits@3 | Hits@10 | Hits@100 | AUC |
 |---|---|---|---|---|---|---|---|
 | HiPhive | 500.5 | 0.263 | 0.225 | 0.272 | 0.333 | 0.512 | 0.779 |
 | Phive | 826.9 | 0.035 | 0.018 | 0.031 | 0.063 | 0.222 | 0.634 |
 | PhenIX | 567.3 | 0.260 | 0.225 | 0.270 | 0.319 | 0.483 | 0.749 |
+
+**Test split — 518 cases**
+
+| Prioritiser | MR | MRR | Hits@1 | Hits@3 | Hits@10 | Hits@100 | AUC |
+|---|---|---|---|---|---|---|---|
+| HiPhive | 509.7 | 0.269 | 0.228 | 0.280 | 0.344 | 0.492 | 0.775 |
+| Phive | 847.2 | 0.026 | 0.010 | 0.025 | 0.048 | 0.193 | 0.626 |
+| PhenIX | 552.5 | 0.261 | 0.230 | 0.266 | 0.320 | 0.461 | 0.756 |
+
+The gene pool is fixed to all 2,258 genes in both cases so results are directly comparable. Small differences between full and test split are sampling variance.
 
 ---
 
