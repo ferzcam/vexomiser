@@ -1,3 +1,17 @@
+Vexomiser — Vector-extended Exomiser
+=====================================
+
+> Fork of [Exomiser 15.0.0](https://github.com/exomiser/Exomiser/releases/tag/15.0.0) extended with embedding-based gene–disease association (GDA) scoring.
+
+**Added scoring methods:**
+
+- **INDIGENA** — inductive, similarity/embedding-based GDA scoring
+- **Multihop-GDA** — link-prediction / logical query answering for GDA
+
+Both methods are integrated into Exomiser's variant prioritisation pipeline as additional `GeneScorer` implementations.
+
+---
+
 The Exomiser - A Tool to Annotate and Prioritize Exome Variants
 ===============================================================
 
