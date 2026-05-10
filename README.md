@@ -10,6 +10,140 @@ Vexomiser — Vector-extended Exomiser
 
 Both methods are integrated into Exomiser's variant prioritisation pipeline as additional `GeneScorer` implementations.
 
+## Setup
+
+### Requirements
+
+- Java 21 (required to build and run Exomiser)
+- [uv](https://github.com/astral-sh/uv) (Python package manager)
+- Maven (bundled via `mvnw`)
+
+On Ubuntu/Debian:
+```bash
+sudo apt install openjdk-21-jdk
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64   # add to ~/.bashrc
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Build
+
+```bash
+git clone https://github.com/ferzcam/vexomiser.git
+cd vexomiser
+chmod +x mvnw
+./mvnw install -pl phenix-repository        # installs local JARs not on Maven Central
+./mvnw package -pl exomiser-cli -am         # builds the CLI (runs tests)
+```
+
+To skip tests (faster):
+```bash
+./mvnw package -pl exomiser-cli -am -DskipTests
+```
+
+### Python environment
+
+```bash
+uv sync   # creates .venv and installs all dependencies
+```
+
+---
+
+## Evaluation data
+
+### Benchmark cases (PAVS)
+
+The benchmark data lives on Ibex and is **not tracked in git**:
+
+```
+/ibex/scratch/projects/c2014/exomiser_extension/
+```
+
+To sync locally:
+```bash
+rsync -av zhapacfp@ilogin.ibex.kaust.edu.sa:/ibex/scratch/projects/c2014/exomiser_extension/ data/
+```
+
+Structure after sync:
+```
+data/
+├── track1_cases.tsv          # 5,076 phenotype-only cases
+├── track2_cases.tsv          # 2,815 phenotype + genotype cases (subset of Track 1)
+├── pavs/phenopackets/        # one JSON per case (HPO terms + variant)
+├── spiked_vcfs/              # Track 2 input VCFs (GIAB HG001 + causal variant)
+└── causal_vcfs/              # causal variant only, one VCF per case
+```
+
+**Track 1** — phenotype-only gene ranking. Input: HPO terms. Ground truth: causal gene.
+
+**Track 2** — variant prioritisation. Input: HPO terms + spiked VCF (~94K background variants from GIAB HG001 with the known causal variant inserted). Ground truth: causal variant + gene.
+
+### Exomiser phenotype data
+
+Download separately (~6.2 GB, not in git):
+```bash
+mkdir -p exomiser-data
+wget -P exomiser-data https://data.monarchinitiative.org/exomiser/latest/2406_phenotype.zip
+unzip exomiser-data/2406_phenotype.zip -d exomiser-data/
+```
+
+---
+
+## Data splits
+
+Train/val/test splits are generated with `eval/generate_splits.py`. The split is:
+
+- **Disease-disjoint**: all cases sharing the same MONDO disease ID go to the same partition. Cases without a MONDO ID (mostly the Saudi cohort) receive a unique synthetic ID so each is treated independently.
+- **Stratified by cohort** (Saudi / DDD / Mixed) to preserve population distribution.
+- **Ratio**: 8 / 1 / 1
+
+```bash
+uv run python eval/generate_splits.py --track 1
+```
+
+Output: `data/splits/{train,val,test}.tsv`
+
+| Split | Cases | Track 2 subset |
+|-------|-------|----------------|
+| Train | 4,062 | 2,261 |
+| Val   |   496 |   270 |
+| Test  |   518 |   284 |
+
+**Important:** Train on Track 1 splits. The same trained model is evaluated on both Track 1 and Track 2 test splits — no retraining needed between tracks.
+
+---
+
+## Evaluation
+
+Runs Exomiser's built-in phenotype prioritisers (HiPhive, Phive, PhenIX) on all cases and computes per-case gene ranking scores. Results are used as baselines for INDIGENA and Multihop-GDA.
+
+```bash
+uv run python eval/exomiser_eval.py \
+    --phenotype-data-dir exomiser-data/2406_phenotype \
+    --track 1
+```
+
+To run a subset of prioritisers (e.g. to resume a partial run):
+```bash
+PRIORITISERS=phenix uv run python eval/exomiser_eval.py \
+    --phenotype-data-dir exomiser-data/2406_phenotype \
+    --track 1
+```
+
+Output: `data/results/exomiser_{hiphive,phive,phenix}_track{1,2}.tsv`
+
+Each TSV row: `gene_symbol <TAB> case_id <TAB> gene_index <TAB> score_0 ... score_N`
+(one score per gene in the eval set, 2,258 genes total)
+
+Metrics computed: MR, MRR, Hits@1, Hits@3, Hits@10, Hits@100, AUC (macro).
+
+### Baseline results (Track 1 — 5,076 cases, 2,258 genes)
+
+| Prioritiser | MR | MRR | Hits@1 | Hits@3 | Hits@10 | Hits@100 | AUC |
+|---|---|---|---|---|---|---|---|
+| HiPhive | 500.5 | 0.263 | 0.225 | 0.272 | 0.333 | 0.512 | 0.779 |
+| Phive | 826.9 | 0.035 | 0.018 | 0.031 | 0.063 | 0.222 | 0.634 |
+| PhenIX | 665.6 | 0.073 | 0.043 | 0.066 | 0.132 | 0.363 | 0.706 |
+
 ---
 
 The Exomiser - A Tool to Annotate and Prioritize Exome Variants
