@@ -171,15 +171,22 @@ in the graph at test time (inductive).
 | Graph | Additional edges | Notes |
 |-------|-----------------|-------|
 | G1 | UPheno OWL2VecStar projection | HP + MP + UPHENO taxonomy |
-| G2 | gene → HP (training cases) | aggregated HPO terms per causal gene |
+| G2 | gene → MP/HP | Primary: MGI mouse-knockout phenotypes (human ortholog → MP terms); fallback: PAVS training case HPO terms for genes with no mouse ortholog |
 | G3 | disease → HP (training cases) | inductive: test/val diseases excluded |
 | G4 | gene ↔ disease (training cases) | supervised association signal |
 
-**Gene–phenotype associations** are derived solely from training cases: for each
-training case, the case's HPO terms are attributed to its causal gene. This is
-intentionally simple and keeps the model self-contained without external
-databases. The trade-off is that gene-phenotype coverage depends on training-set
-frequency — genes with few training cases get fewer phenotype edges.
+**Gene–phenotype associations (Graph 2)** use MGI mouse-knockout MP phenotypes
+as the primary source, mapped to human genes via the HomoloGene orthology table
+(`HOM_MouseHumanSequence.rpt`). Because MP terms are embedded in the UPheno
+graph alongside HP terms, BMA comparison between gene (MP-based) and case (HP-based)
+phenotype embeddings is valid within the same latent space.
+
+For human genes with no mouse ortholog in MGI, the PAVS training-case HPO terms
+are used as a fallback. This keeps self-contained coverage for genes unique to
+the human dataset.
+
+This design avoids using OMIM disease–gene associations as a gene-phenotype
+source, which would leak the GDA signal we are trying to predict.
 
 ### Setup
 
@@ -188,10 +195,12 @@ INDIGENA repo and the `indigena` conda environment on the workstation:
 
 ```bash
 # On the workstation (10.74.250.168)
-UPHENO_EDGES=~/Git/indigena/data/upheno_owl2vecstar_edges.tsv
+INDIGENA=~/Git/indigena/data
 
 ~/miniforge3/envs/indigena/bin/python eval/indigena_train.py \
-    --upheno-edges $UPHENO_EDGES \
+    --upheno-edges $INDIGENA/upheno_owl2vecstar_edges.tsv \
+    --mgi-gene-phenotypes $INDIGENA/gene_phenotypes.csv \
+    --hom-file $INDIGENA/HOM_MouseHumanSequence.rpt \
     --graph2 --graph3 --graph4 \
     --track 1 --eval-split test
 ```
@@ -200,12 +209,14 @@ To evaluate a saved checkpoint without retraining:
 
 ```bash
 ~/miniforge3/envs/indigena/bin/python eval/indigena_train.py \
-    --upheno-edges $UPHENO_EDGES \
+    --upheno-edges $INDIGENA/upheno_owl2vecstar_edges.tsv \
+    --mgi-gene-phenotypes $INDIGENA/gene_phenotypes.csv \
+    --hom-file $INDIGENA/HOM_MouseHumanSequence.rpt \
     --graph2 --graph3 --graph4 \
     --track 1 --eval-split test --only-eval
 ```
 
-Output: `data/results/indigena_transd_track1_graph4_seed0_dim100_bs2048_lr0.001_test.tsv`
+Output: `data/results/indigena_transd_track1_graph4_mgi_seed0_dim100_bs2048_lr0.001_test.tsv`
 
 ---
 
