@@ -209,15 +209,30 @@ def emit(summary_f, text):
 
 @ck.command()
 @ck.option("--phenotype-data-dir", required=True,
-           help="Path to Exomiser phenotype data directory (e.g. /path/to/2506_phenotype)")
+           help="Path to Exomiser phenotype data directory (e.g. /path/to/2406_phenotype)")
 @ck.option("--track", type=ck.Choice(["1", "2"]), default="1", show_default=True,
            help="Evaluation track: 1=phenotype-only, 2=phenotype+genotype")
-def main(phenotype_data_dir, track):
+@ck.option("--split", type=ck.Choice(["train", "val", "test", "all"]), default="all",
+           show_default=True,
+           help="Restrict evaluation to a data split (requires eval/generate_splits.py to have been run)")
+def main(phenotype_data_dir, track, split):
     track = int(track)
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
     logger.info("Loading PAVS cases...")
     cases = load_cases(track)
+
+    if split != "all":
+        split_path = os.path.join(DATA_DIR, "splits", f"{split}.tsv")
+        if not os.path.exists(split_path):
+            raise FileNotFoundError(
+                f"Split file not found: {split_path}. "
+                "Run: uv run python eval/generate_splits.py"
+            )
+        split_ids = set(pd.read_csv(split_path, sep="\t")["case_id"])
+        cases = cases[cases["case_id"].isin(split_ids)].reset_index(drop=True)
+        logger.info(f"Restricted to '{split}' split: {len(cases)} cases")
+
     gene_entrez = load_gene_entrez_map()
 
     eval_genes = sorted(cases["gene_symbol"].dropna().unique().tolist())
@@ -260,14 +275,15 @@ def main(phenotype_data_dir, track):
         subset = os.environ["PRIORITISERS"].split(",")
         prioritisers = {k: v for k, v in prioritisers.items() if k in subset}
 
-    summary_path = os.path.join(RESULTS_DIR, f"exomiser_track{track}_summary.txt")
+    split_tag = f"_{split}" if split != "all" else ""
+    summary_path = os.path.join(RESULTS_DIR, f"exomiser_track{track}{split_tag}_summary.txt")
     with open(summary_path, "w") as summary_f:
-        emit(summary_f, f"# Exomiser evaluation — Track {track}")
+        emit(summary_f, f"# Exomiser evaluation — Track {track}  split: {split}")
         emit(summary_f, f"# Cases: {len(cases)}  |  Genes: {len(eval_genes)}")
         emit(summary_f, "")
 
         for pname, prioritiser in prioritisers.items():
-            out_file = os.path.join(RESULTS_DIR, f"exomiser_{pname}_track{track}.tsv")
+            out_file = os.path.join(RESULTS_DIR, f"exomiser_{pname}_track{track}{split_tag}.tsv")
             logger.info(f"Running {pname}...")
             run_prioritiser(pname, prioritiser, cases, eval_genes,
                             gene_to_index, java_genes, entrez_to_eval_idx,
