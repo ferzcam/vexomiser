@@ -67,3 +67,6 @@ docs/_build/
 
 # Evaluation data (lives on Ibex, too large for git)
 data/
+
+# Exomiser phenotype data (downloaded separately, too large for git)
+exomiser-data/

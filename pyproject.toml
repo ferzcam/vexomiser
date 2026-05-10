@@ -1,12 +1,21 @@
 [project]
-name = "exomiser"
+name = "vexomiser"
 version = "0.1.0"
-description = "A simple project for building the Exomiser docs using Sphinx"
+description = "Exomiser extended with embedding-based gene-disease association scoring"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
+    # docs
     "sphinx>=8.2.3",
     "sphinx-rtd-theme>=3.0.2",
+    # evaluation
+    "JPype1>=1.5.0",
+    "click>=8.1",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scipy>=1.10",
+    "tqdm>=4.65",
+    "torch>=2.0",
 ]
 
 [project.scripts]
