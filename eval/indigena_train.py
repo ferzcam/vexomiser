@@ -89,7 +89,9 @@ def load_human_to_mgi(hom_file: str) -> dict:
     # Column names from the file header
     # "HomoloGene ID", "Common Organism Name", "NCBI Taxon ID", "Symbol",
     # "EntrezGene ID", "Mouse MGI ID", ...
-    groups = df.groupby("HomoloGene ID")
+    # Column name differs between full file ("DB Class Key") and test fixture ("HomoloGene ID")
+    group_col = "DB Class Key" if "DB Class Key" in df.columns else "HomoloGene ID"
+    groups = df.groupby(group_col)
     human_to_mgi = {}
     for _, grp in groups:
         mouse_rows = grp[grp["NCBI Taxon ID"] == "10090"]
