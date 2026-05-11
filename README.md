@@ -155,12 +155,12 @@ IC-based similarity in each method, with identical gene-phenotype model associat
 |---|---|---|---|---|---|---|---|
 | HiPhive | 509.7 | 0.269 | 0.228 | 0.280 | 0.344 | 0.492 | 0.775 |
 | INDIGENA-HiPhive | 506.2 | 0.268 | 0.226 | 0.278 | 0.347 | 0.510 | 0.777 |
-| INDIGENA-PhenIX | 503.2 | 0.268 | 0.226 | 0.278 | 0.347 | 0.510 | 0.778 |
 | PhenIX | 552.5 | 0.261 | 0.230 | 0.266 | 0.320 | 0.461 | 0.756 |
-| INDIGENA G4 (HPO only) | 761.2 | 0.116 | 0.079 | 0.118 | 0.191 | 0.375 | 0.664 |
+| INDIGENA-PhenIX | 503.2 | 0.268 | 0.226 | 0.278 | 0.347 | 0.510 | 0.778 |
 | Phive | 847.2 | 0.026 | 0.010 | 0.025 | 0.048 | 0.193 | 0.626 |
-| INDIGENA G4 + MGI | 997.8 | 0.019 | 0.012 | 0.017 | 0.027 | 0.069 | 0.559 |
 | INDIGENA-Phive | 886.7 | 0.017 | 0.010 | 0.017 | 0.027 | 0.058 | 0.608 |
+| INDIGENA G4 (HPO only) | 761.2 | 0.116 | 0.079 | 0.118 | 0.191 | 0.375 | 0.664 |
+| INDIGENA G4 + MGI | 997.8 | 0.019 | 0.012 | 0.017 | 0.027 | 0.069 | 0.559 |
 
 The gene pool is fixed to all 2,258 genes in both cases so results are directly comparable. Small differences between full and test split are sampling variance.
 
