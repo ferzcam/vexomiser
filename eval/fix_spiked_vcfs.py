@@ -59,12 +59,15 @@ def fix_one(row):
         tmp.write(f"{chrom}\t{pos}\t.\t{ref}\t{alt}\t100\tPASS\t.\tGT\t{gt}\n")
         tmp_path = tmp.name
 
-    # bgzip + tabix the mini-VCF
+    # Compress + index the mini-VCF using bcftools (bgzip not required)
     tmp_gz = tmp_path + ".gz"
-    subprocess.run(["bgzip", "-c", tmp_path], stdout=open(tmp_gz, "wb"), check=True)
-    subprocess.run(["tabix", "-p", "vcf", tmp_gz], check=True)
+    subprocess.run(
+        ["bcftools", "view", "-O", "z", "-o", tmp_gz, tmp_path],
+        check=True
+    )
+    subprocess.run(["bcftools", "index", "-t", tmp_gz], check=True)
 
-    # Merge (GIAB background) + (causal variant), sort by coordinate
+    # Merge (GIAB background) + (causal variant)
     subprocess.run(
         ["bcftools", "concat", "--allow-overlaps", "-a",
          "-O", "z", "-o", dst, src, tmp_gz],
