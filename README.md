@@ -164,6 +164,59 @@ IC-based similarity in each method, with identical gene-phenotype model associat
 
 The gene pool is fixed to all 2,258 genes in both cases so results are directly comparable. Small differences between full and test split are sampling variance.
 
+### Track 2 results (226 genes in pool)
+
+Track 2 combines variant pathogenicity scores from Exomiser's full pipeline (gnomAD
+MAF filter + REVEL/MVP pathogenicity) with phenotype similarity.
+Each spiked VCF contains ~94K GIAB HG001 background variants plus the known causal variant.
+The gene pool is restricted to the 226 unique causal genes in the test split.
+
+To prepare the VCFs (fixes the non-standard REF="." format of the spiked causal
+variants so HTSJDK can parse them):
+```bash
+~/miniforge3/envs/indigena/bin/python eval/fix_spiked_vcfs.py test
+```
+
+To run Track 2 (first time — includes ~10 min Exomiser CLI phase):
+```bash
+nohup ~/miniforge3/envs/indigena/bin/python eval/track2_eval.py \
+    --phenotype-data-dir exomiser-data/2406_phenotype \
+    --app-props exomiser-data/application.properties \
+    --split test \
+    --embeddings data/models/indigena_track1_graph4_embeddings.tsv \
+    > data/results/track2_eval.log 2>&1 &
+```
+
+To add/re-run phenotype scoring without re-running the CLI phase:
+```bash
+nohup ~/miniforge3/envs/indigena/bin/python eval/track2_eval.py \
+    --phenotype-data-dir exomiser-data/2406_phenotype \
+    --app-props exomiser-data/application.properties \
+    --split test \
+    --embeddings data/models/indigena_track1_graph4_embeddings.tsv \
+    --skip-cli \
+    > data/results/track2_eval.log 2>&1 &
+```
+
+**Test split — 284 cases, 226 genes in pool**
+
+Combined score = `EXOMISER_GENE_VARIANT_SCORE × phenotype_score` for all methods
+except HiPhive, which uses Exomiser's native `EXOMISER_GENE_COMBINED_SCORE` directly.
+
+| Method | MR | MRR | Hits@1 | Hits@3 | Hits@10 | Hits@100 | AUC |
+|---|---|---|---|---|---|---|---|
+| HiPhive | 20.1 | 0.580 | 0.415 | 0.669 | 0.877 | 0.905 | 0.914 |
+| INDIGENA-HiPhive | 11.9 | 0.468 | 0.271 | 0.479 | 0.926 | 0.951 | 0.951 |
+| PhenIX | 26.5 | 0.531 | 0.391 | 0.616 | 0.789 | 0.870 | 0.886 |
+| INDIGENA-PhenIX | 24.2 | 0.459 | 0.268 | 0.665 | 0.817 | 0.891 | 0.896 |
+| Phive | 34.9 | 0.338 | 0.134 | 0.451 | 0.768 | 0.831 | 0.849 |
+| INDIGENA-Phive | 9.7 | 0.405 | 0.144 | 0.465 | 0.940 | 0.972 | 0.961 |
+
+INDIGENA methods consistently improve top-10 and top-100 recall at the cost of
+top-1 precision. INDIGENA-Phive achieves the best MR (9.7) and Hits@10 (0.940)
+despite Phive being the weakest baseline — the embedding space already encodes
+cross-species HP↔MP similarity without explicit cross-species lookup.
+
 ---
 
 ## INDIGENA training
