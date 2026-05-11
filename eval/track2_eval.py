@@ -3,27 +3,26 @@ Track 2 Exomiser evaluation (phenotype + variant).
 
 Each case has a spiked VCF (GIAB HG001 hg38 background + causal variant).
 Runs the full Exomiser analysis pipeline via CLI subprocess in parallel, then
-optionally combines variant scores with INDIGENA phenotype scores.
+scores phenotype similarity for each method via JPype and multiplies by the
+per-gene variant score.
 
-Two outputs:
-  hiphive_track2  — Exomiser HiPhive combined score (variant × pheno)
-  indigena_hiphive_track2 — variant score × INDIGENA BMA pheno score
-
-Output TSV row format (compatible with metrics.compute_metrics):
-    gene_symbol <TAB> case_id <TAB> gene_index <TAB> score_0 <TAB> ... score_N
+Methods produced:
+  hiphive           — Exomiser EXOMISER_GENE_COMBINED_SCORE (variant × HiPhive pheno)
+  phenix            — variant_score × PhenIX pheno score
+  phive             — variant_score × Phive pheno score
+  indigena_hiphive  — variant_score × INDIGENA HiPhive pheno score (all organisms)
+  indigena_phenix   — variant_score × INDIGENA PhenIX pheno score (human only)
+  indigena_phive    — variant_score × INDIGENA Phive pheno score  (mouse only)
 
 Usage:
     python track2_eval.py \\
-        --phenotype-data-dir /path/to/2406_phenotype \\
-        --app-props /path/to/application.properties \\
-        --split test
+        --phenotype-data-dir exomiser-data/2406_phenotype \\
+        --app-props exomiser-data/application.properties \\
+        --split test \\
+        --embeddings data/models/indigena_track1_graph4_embeddings.tsv
 
-    # with INDIGENA:
-    python track2_eval.py \\
-        --phenotype-data-dir /path/to/2406_phenotype \\
-        --app-props /path/to/application.properties \\
-        --embeddings data/models/indigena_track1_graph4_embeddings.tsv \\
-        --split test
+    # Reuse existing CLI results (skip the 10-min CLI phase):
+    python track2_eval.py ... --skip-cli
 """
 
 import json
@@ -53,30 +52,6 @@ CLI_TARGET = os.path.join(REPO_ROOT, "exomiser-cli", "target")
 
 METRIC_KEYS = ["mr", "mrr", "hits@1", "hits@3", "hits@10", "hits@100", "auc"]
 TEX_HEADER = "MR & MRR & Hits@1 & Hits@3 & Hits@10 & Hits@100 & AUC"
-
-VARIANT_EFFECT_REMOVE = [
-    "FIVE_PRIME_UTR_EXON_VARIANT", "FIVE_PRIME_UTR_INTRON_VARIANT",
-    "THREE_PRIME_UTR_EXON_VARIANT", "THREE_PRIME_UTR_INTRON_VARIANT",
-    "NON_CODING_TRANSCRIPT_EXON_VARIANT", "UPSTREAM_GENE_VARIANT",
-    "INTERGENIC_VARIANT", "REGULATORY_REGION_VARIANT",
-    "CODING_TRANSCRIPT_INTRON_VARIANT", "NON_CODING_TRANSCRIPT_INTRON_VARIANT",
-    "DOWNSTREAM_GENE_VARIANT",
-]
-
-FREQ_SOURCES = [
-    "GNOMAD_E_AFR", "GNOMAD_E_AMR", "GNOMAD_E_EAS", "GNOMAD_E_NFE", "GNOMAD_E_SAS",
-    "GNOMAD_G_AFR", "GNOMAD_G_AMR", "GNOMAD_G_EAS", "GNOMAD_G_NFE", "GNOMAD_G_SAS",
-]
-
-INHERITANCE_MODES = {
-    "AUTOSOMAL_DOMINANT": 0.1,
-    "AUTOSOMAL_RECESSIVE_COMP_HET": 2.0,
-    "AUTOSOMAL_RECESSIVE_HOM_ALT": 0.1,
-    "X_DOMINANT": 0.1,
-    "X_RECESSIVE_COMP_HET": 2.0,
-    "X_RECESSIVE_HOM_ALT": 0.1,
-    "MITOCHONDRIAL": 0.2,
-}
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +100,6 @@ def run_one_case(args):
     case_out_dir = os.path.join(work_dir, case_id.replace(":", "_"))
     os.makedirs(case_out_dir, exist_ok=True)
 
-    # Write v1 phenopacket (Exomiser v15 CLI requires phenopackets v1 format)
     pp_v1 = make_phenopacket_v1(phenopacket_path)
     pp_path = os.path.join(case_out_dir, "phenopacket.json")
     with open(pp_path, "w") as f:
@@ -189,14 +163,13 @@ def parse_gene_tsv(tsv_path: str) -> dict:
             except ValueError:
                 combined, variant = 0.0, 0.0
             if gene:
-                # keep the best combined score per gene symbol
                 if gene not in scores or combined > scores[gene][0]:
                     scores[gene] = (combined, variant)
     return scores
 
 
 # ---------------------------------------------------------------------------
-# INDIGENA phenotype scoring via JPype (same as track1_eval.py)
+# JVM / phenotype scoring
 # ---------------------------------------------------------------------------
 
 def start_jvm(phenotype_data_dir: str, jar_path: str):
@@ -215,8 +188,13 @@ def start_jvm(phenotype_data_dir: str, jar_path: str):
     )
 
 
-def build_indigena_scorer(embeddings_path: str, phenotype_data_dir: str):
-    """Return (IndigenaModelScorerFactory, priority_service) via JPype."""
+def build_all_prioritisers(phenotype_data_dir: str, embeddings_path=None):
+    """
+    Build all phenotype prioritisers. Always includes phenix and phive.
+    If embeddings_path is given, also includes INDIGENA variants.
+
+    Returns (prioritisers_dict, ds).
+    """
     import jpype.imports  # noqa
     from java.nio.file import Paths as JPaths
     from com.zaxxer.hikari import HikariDataSource
@@ -224,19 +202,24 @@ def build_indigena_scorer(embeddings_path: str, phenotype_data_dir: str):
         HumanPhenotypeOntologyDao, MousePhenotypeOntologyDao, ZebraFishPhenotypeOntologyDao,
     )
     from org.monarchinitiative.exomiser.core.phenotype.service import OntologyServiceImpl
-    from org.monarchinitiative.exomiser.core.phenotype import (
-        PhenotypeMatchService, IndigenaEmbeddings, IndigenaModelScorerFactory,
-    )
+    from org.monarchinitiative.exomiser.core.phenotype import PhenotypeMatchService
     from org.monarchinitiative.exomiser.core.prioritisers.service import (
         ModelServiceImpl, PriorityService,
     )
     from org.monarchinitiative.exomiser.core.prioritisers.dao import DefaultDiseaseDao
+    from org.monarchinitiative.exomiser.core.prioritisers import (
+        PriorityFactoryImpl, HiPhiveOptions, HiPhivePriority, PhivePriority,
+    )
     from org.monarchinitiative.exomiser.core.prioritisers.util import DataMatrixIO
 
     phenotype_data_dir = os.path.abspath(phenotype_data_dir)
     db_stem = os.path.basename(phenotype_data_dir.rstrip("/"))
     db_path = os.path.join(phenotype_data_dir, db_stem)
-    jdbc_url = f"jdbc:h2:file:{db_path};ACCESS_MODE_DATA=r;INIT=SET SCHEMA EXOMISER"
+    jdbc_url = (
+        f"jdbc:h2:file:{db_path}"
+        ";ACCESS_MODE_DATA=r"
+        ";INIT=SET SCHEMA EXOMISER"
+    )
 
     ds = HikariDataSource()
     ds.setJdbcUrl(jdbc_url)
@@ -256,19 +239,42 @@ def build_indigena_scorer(embeddings_path: str, phenotype_data_dir: str):
     rw_path = JPaths.get(os.path.join(phenotype_data_dir, "rw_string_10.mv"))
     data_matrix = DataMatrixIO.loadOffHeapDataMatrix(rw_path)
 
-    emb = IndigenaEmbeddings.load(JPaths.get(os.path.abspath(embeddings_path)))
-    scorer_factory = IndigenaModelScorerFactory(emb)
+    phenix_dir = JPaths.get(os.path.join(phenotype_data_dir, "phenix"))
+    factory = PriorityFactoryImpl(priority_service, data_matrix, phenix_dir)
 
-    return scorer_factory, priority_service, data_matrix, ds
+    prioritisers = {
+        "phenix": factory.makePhenixPrioritiser(),
+        "phive":  factory.makePhivePrioritiser(),
+    }
+
+    if embeddings_path:
+        from org.monarchinitiative.exomiser.core.phenotype import (
+            IndigenaEmbeddings, IndigenaModelScorerFactory,
+        )
+        emb = IndigenaEmbeddings.load(JPaths.get(os.path.abspath(embeddings_path)))
+        scorer_factory = IndigenaModelScorerFactory(emb)
+
+        hiphive_opts = HiPhiveOptions.defaults()
+        phenix_opts = HiPhiveOptions.builder().runParams("human").build()
+        prioritisers.update({
+            "indigena_hiphive": HiPhivePriority(
+                hiphive_opts, data_matrix, priority_service, scorer_factory
+            ),
+            "indigena_phive":  PhivePriority(priority_service, scorer_factory),
+            "indigena_phenix": HiPhivePriority(
+                phenix_opts, data_matrix, priority_service, scorer_factory
+            ),
+        })
+
+    return prioritisers, ds
 
 
-def score_indigena_pheno(cases, eval_genes, gene_entrez, scorer_factory, priority_service, data_matrix):
-    """Return {case_id: {gene_symbol: pheno_score}} for all cases."""
+def score_pheno(prioritiser, cases, eval_genes, gene_entrez, desc="scoring"):
+    """Return {case_id: {gene_symbol: pheno_score}} using any Exomiser prioritiser."""
     import jpype.imports  # noqa
     from java.util import ArrayList
     from java.util.stream import Collectors
     from org.monarchinitiative.exomiser.core.model import Gene
-    from org.monarchinitiative.exomiser.core.prioritisers import HiPhivePriority, HiPhiveOptions
 
     java_genes = ArrayList()
     entrez_to_sym = {}
@@ -278,11 +284,8 @@ def score_indigena_pheno(cases, eval_genes, gene_entrez, scorer_factory, priorit
             java_genes.add(Gene(sym, eid))
             entrez_to_sym[eid] = sym
 
-    opts = HiPhiveOptions.defaults()
-    prioritiser = HiPhivePriority(opts, data_matrix, priority_service, scorer_factory)
-
     results = {}
-    for _, row in tqdm(cases.iterrows(), total=len(cases), desc="INDIGENA pheno"):
+    for _, row in tqdm(cases.iterrows(), total=len(cases), desc=desc):
         case_id = row["case_id"]
         hpo_ids = row["hpo_list"]
         pheno_scores = {g: 0.0 for g in eval_genes}
@@ -353,15 +356,19 @@ def emit(f, text):
 @ck.option("--workers", default=16, show_default=True,
            help="Number of parallel Exomiser CLI workers")
 @ck.option("--embeddings", default=None,
-           help="Path to INDIGENA embeddings TSV. When supplied, also produces indigena_hiphive_track2.")
+           help="Path to INDIGENA embeddings TSV. When supplied, also runs "
+                "indigena_hiphive / indigena_phenix / indigena_phive.")
 @ck.option("--work-dir", default=None,
-           help="Directory for temp CLI job files and outputs. Defaults to data/results/track2_jobs/")
-def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir):
+           help="Directory for temp CLI job files and outputs. "
+                "Defaults to data/results/track2_jobs/")
+@ck.option("--skip-cli", is_flag=True, default=False,
+           help="Skip Exomiser CLI phase and reuse existing TSV files in --work-dir.")
+def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir, skip_cli):
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
+    import glob as _glob
     jar_path = None
-    import glob
-    for j in glob.glob(os.path.join(CLI_TARGET, "exomiser-cli-*.jar")):
+    for j in _glob.glob(os.path.join(CLI_TARGET, "exomiser-cli-*.jar")):
         jar_path = j
         break
     if not jar_path:
@@ -382,41 +389,51 @@ def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir):
     vcf_dir = os.path.join(DATA_DIR, "spiked_vcfs_fixed")
     phenopacket_dir = os.path.join(DATA_DIR, "pavs", "phenopackets")
 
-    # ------------------------------------------------------------------
-    # Phase 1: run Exomiser CLI in parallel
-    # ------------------------------------------------------------------
-    logger.info(f"Running Exomiser CLI ({workers} workers)...")
-    task_args = []
-    for _, row in cases.iterrows():
-        cid = row["case_id"]
-        vcf = os.path.join(vcf_dir, f"{cid}.vcf.gz")
-        pp = os.path.join(phenopacket_dir, f"{cid}.json")
-        if not os.path.exists(vcf):
-            logger.warning(f"Missing VCF for {cid}, skipping")
-            continue
-        if not os.path.exists(pp):
-            logger.warning(f"Missing phenopacket for {cid}, skipping")
-            continue
-        task_args.append((cid, pp, vcf, os.path.abspath(app_props), jar_path, work_dir))
-
-    cli_results = {}  # case_id -> tsv_path | None
-    with ProcessPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(run_one_case, args): args[0] for args in task_args}
-        for fut in tqdm(as_completed(futures), total=len(futures), desc="Exomiser CLI"):
-            cid, tsv_path = fut.result()
-            cli_results[cid] = tsv_path
-
-    n_ok = sum(1 for v in cli_results.values() if v is not None)
-    logger.info(f"CLI complete: {n_ok}/{len(task_args)} cases succeeded")
-
-    # ------------------------------------------------------------------
-    # Phase 2: collect scores and write hiphive output
-    # ------------------------------------------------------------------
     split_tag = f"_{split}" if split != "all" else ""
-    hiphive_out = os.path.join(RESULTS_DIR, f"exomiser_hiphive_track2{split_tag}.tsv")
 
-    # variant_scores[case_id][gene_symbol] = variant_score (for INDIGENA combination)
-    variant_scores = {}
+    # ------------------------------------------------------------------
+    # Phase 1: run Exomiser CLI in parallel (or reuse existing results)
+    # ------------------------------------------------------------------
+    cli_results = {}  # case_id -> tsv_path | None
+
+    if skip_cli:
+        logger.info("--skip-cli: loading existing TSV results...")
+        for _, row in cases.iterrows():
+            cid = row["case_id"]
+            safe_id = cid.replace(":", "_")
+            tsv = os.path.join(work_dir, safe_id, f"{safe_id}.genes.tsv")
+            cli_results[cid] = tsv if os.path.exists(tsv) else None
+        n_ok = sum(1 for v in cli_results.values() if v is not None)
+        logger.info(f"Found {n_ok}/{len(cases)} existing TSV files")
+    else:
+        task_args = []
+        for _, row in cases.iterrows():
+            cid = row["case_id"]
+            vcf = os.path.join(vcf_dir, f"{cid}.vcf.gz")
+            pp = os.path.join(phenopacket_dir, f"{cid}.json")
+            if not os.path.exists(vcf):
+                logger.warning(f"Missing VCF for {cid}, skipping")
+                continue
+            if not os.path.exists(pp):
+                logger.warning(f"Missing phenopacket for {cid}, skipping")
+                continue
+            task_args.append((cid, pp, vcf, os.path.abspath(app_props), jar_path, work_dir))
+
+        logger.info(f"Running Exomiser CLI ({workers} workers)...")
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(run_one_case, args): args[0] for args in task_args}
+            for fut in tqdm(as_completed(futures), total=len(futures), desc="Exomiser CLI"):
+                cid, tsv_path = fut.result()
+                cli_results[cid] = tsv_path
+
+        n_ok = sum(1 for v in cli_results.values() if v is not None)
+        logger.info(f"CLI complete: {n_ok}/{len(task_args)} cases succeeded")
+
+    # ------------------------------------------------------------------
+    # Phase 2: collect variant/combined scores; write hiphive output
+    # ------------------------------------------------------------------
+    hiphive_out = os.path.join(RESULTS_DIR, f"exomiser_hiphive_track2{split_tag}.tsv")
+    variant_scores = {}  # case_id -> {gene_symbol: variant_score}
 
     with open(hiphive_out, "w") as f:
         for _, row in cases.iterrows():
@@ -430,8 +447,7 @@ def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir):
 
             tsv = cli_results.get(cid)
             if tsv:
-                parsed = parse_gene_tsv(tsv)
-                for g, (combined, variant) in parsed.items():
+                for g, (combined, variant) in parse_gene_tsv(tsv).items():
                     if g in gene_combined:
                         gene_combined[g] = combined
                         gene_variant[g] = variant
@@ -444,45 +460,49 @@ def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir):
             )
 
     # ------------------------------------------------------------------
-    # Phase 3 (optional): INDIGENA pheno scoring + combine with variant
+    # Phase 3: JPype phenotype scoring for phenix, phive, indigena_*
     # ------------------------------------------------------------------
-    indigena_out = None
-    if embeddings:
-        logger.info("Starting JVM for INDIGENA scoring...")
-        start_jvm(phenotype_data_dir, jar_path)
-        scorer_factory, priority_service, data_matrix, ds = build_indigena_scorer(
-            embeddings, phenotype_data_dir
-        )
+    logger.info("Starting JVM for phenotype scoring...")
+    start_jvm(phenotype_data_dir, jar_path)
+    prioritisers, ds = build_all_prioritisers(phenotype_data_dir, embeddings)
 
-        indigena_pheno = score_indigena_pheno(
-            cases, eval_genes, gene_entrez, scorer_factory, priority_service, data_matrix
-        )
+    output_paths = {"hiphive": hiphive_out}
 
-        indigena_out = os.path.join(RESULTS_DIR, f"exomiser_indigena_hiphive_track2{split_tag}.tsv")
-        with open(indigena_out, "w") as f:
+    for pname, prioritiser in prioritisers.items():
+        pheno = score_pheno(prioritiser, cases, eval_genes, gene_entrez, desc=pname)
+        out_path = os.path.join(RESULTS_DIR, f"exomiser_{pname}_track2{split_tag}.tsv")
+        output_paths[pname] = out_path
+        with open(out_path, "w") as f:
             for _, row in cases.iterrows():
                 cid = row["case_id"]
                 causal = row["gene_symbol"]
                 if causal not in gene_to_index:
                     continue
                 v_scores = variant_scores.get(cid, {})
-                p_scores = indigena_pheno.get(cid, {})
+                p_scores = pheno.get(cid, {})
                 scores = [v_scores.get(g, 0.0) * p_scores.get(g, 0.0) for g in eval_genes]
                 f.write(
                     f"{causal}\t{cid}\t{gene_to_index[causal]}\t"
                     + "\t".join(str(s) for s in scores) + "\n"
                 )
-        ds.close()
+
+    ds.close()
 
     # ------------------------------------------------------------------
     # Metrics
     # ------------------------------------------------------------------
     summary_path = os.path.join(RESULTS_DIR, f"exomiser_track2{split_tag}_summary.txt")
+    method_order = [
+        "hiphive", "indigena_hiphive",
+        "phenix",  "indigena_phenix",
+        "phive",   "indigena_phive",
+    ]
     with open(summary_path, "w") as sf:
         emit(sf, f"# Exomiser Track 2 — split: {split}")
         emit(sf, f"# Cases: {len(cases)}  |  Genes: {len(eval_genes)}")
         emit(sf, "")
-        for label, path in [("hiphive", hiphive_out), ("indigena_hiphive", indigena_out)]:
+        for label in method_order:
+            path = output_paths.get(label)
             if path is None:
                 continue
             _, macro = compute_metrics(path, verbose=False)
