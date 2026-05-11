@@ -9,9 +9,23 @@ across all eval genes, then computes MR / MRR / Hits@1,3,10,100 / AUC.
 Output TSV row format (compatible with metrics.compute_metrics):
     gene_symbol <TAB> case_id <TAB> gene_index <TAB> score_0 <TAB> ... score_N
 
+When --embeddings is supplied, three additional INDIGENA variants are run that
+replace each method's IC-based semantic similarity with INDIGENA embedding BMA,
+while keeping the same gene-phenotype model associations:
+
+  indigena_hiphive  — HiPhivePriority  + IndigenaModelScorerFactory (all organisms)
+  indigena_phive    — PhivePriority    + IndigenaModelScorerFactory (mouse only)
+  indigena_phenix   — HiPhivePriority  + IndigenaModelScorerFactory (human only, no PPI)
+
 Usage:
     python exomiser_eval.py \\
-        --phenotype-data-dir /path/to/2506_phenotype \\
+        --phenotype-data-dir /path/to/2406_phenotype \\
+        --track 1
+
+    # with INDIGENA replacement:
+    python exomiser_eval.py \\
+        --phenotype-data-dir /path/to/2406_phenotype \\
+        --embeddings data/models/indigena_track1_graph4_embeddings.tsv \\
         --track 1
 """
 
@@ -119,7 +133,44 @@ def build_priority_factory(phenotype_data_dir: str):
     phenix_dir = JPaths.get(os.path.join(phenotype_data_dir, "phenix"))
 
     factory = PriorityFactoryImpl(priority_service, data_matrix, phenix_dir)
-    return factory, ds
+    return factory, ds, priority_service, data_matrix
+
+
+def build_indigena_prioritisers(embeddings_path: str, priority_service, data_matrix):
+    """
+    Build HiPhive / Phive / PhenIX variants that use INDIGENA embedding BMA
+    instead of IC-based semantic similarity, while keeping the same gene-model
+    associations as the originals.
+
+      indigena_hiphive — all organisms (human HP + mouse MP + fish ZP) + PPI
+      indigena_phive   — mouse models only (MP terms)
+      indigena_phenix  — human disease models only (HP terms), no PPI
+    """
+    import jpype.imports  # noqa
+    from java.nio.file import Paths as JPaths
+    from org.monarchinitiative.exomiser.core.phenotype import (
+        IndigenaEmbeddings,
+        IndigenaModelScorerFactory,
+    )
+    from org.monarchinitiative.exomiser.core.prioritisers import (
+        HiPhivePriority,
+        PhivePriority,
+        HiPhiveOptions,
+    )
+
+    logger.info(f"Loading INDIGENA embeddings from {embeddings_path} ...")
+    emb = IndigenaEmbeddings.load(JPaths.get(os.path.abspath(embeddings_path)))
+    logger.info(f"  {emb.size()} entities, dim={emb.dim()}")
+    scorer_factory = IndigenaModelScorerFactory(emb)
+
+    hiphive_opts = HiPhiveOptions.defaults()   # human + mouse + fish + ppi
+    phenix_opts = HiPhiveOptions.builder().runParams("human").build()  # human HP only, no PPI
+
+    return {
+        "indigena_hiphive": HiPhivePriority(hiphive_opts, data_matrix, priority_service, scorer_factory),
+        "indigena_phive":   PhivePriority(priority_service, scorer_factory),
+        "indigena_phenix":  HiPhivePriority(phenix_opts, data_matrix, priority_service, scorer_factory),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +266,10 @@ def emit(summary_f, text):
 @ck.option("--split", type=ck.Choice(["train", "val", "test", "all"]), default="all",
            show_default=True,
            help="Restrict evaluation to a data split (requires eval/generate_splits.py to have been run)")
-def main(phenotype_data_dir, track, split):
+@ck.option("--embeddings", default=None,
+           help="Path to INDIGENA embeddings TSV (from eval/export_embeddings.py). "
+                "When supplied, also runs indigena_hiphive / indigena_phive / indigena_phenix.")
+def main(phenotype_data_dir, track, split, embeddings):
     track = int(track)
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
@@ -252,7 +306,7 @@ def main(phenotype_data_dir, track, split):
     from org.monarchinitiative.exomiser.core.prioritisers import HiPhiveOptions
 
     logger.info("Building Exomiser priority factory...")
-    factory, ds = build_priority_factory(phenotype_data_dir)
+    factory, ds, priority_service, data_matrix = build_priority_factory(phenotype_data_dir)
 
     java_genes = ArrayList()
     entrez_to_eval_idx = {}
@@ -273,6 +327,11 @@ def main(phenotype_data_dir, track, split):
         "phive":   factory.makePhivePrioritiser(),
         "phenix":  factory.makePhenixPrioritiser(),
     }
+
+    if embeddings:
+        prioritisers.update(
+            build_indigena_prioritisers(embeddings, priority_service, data_matrix)
+        )
 
     # Allow running a subset of prioritisers to resume partial runs
     if os.environ.get("PRIORITISERS"):

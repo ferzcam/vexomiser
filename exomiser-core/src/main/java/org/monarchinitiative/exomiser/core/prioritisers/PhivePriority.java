@@ -63,9 +63,21 @@ public class PhivePriority implements Prioritiser<PhivePriorityResult> {
     static final float NO_MOUSE_MODEL_SCORE = 0.6f;
 
     private final PriorityService priorityService;
+    private final ModelScorerFactory modelScorerFactory;
 
+    /**
+     * Uses the default Phenodigm IC-based semantic similarity scorer.
+     */
     public PhivePriority(PriorityService priorityService) {
+        this(priorityService, PhenodigmModelScorerFactory.INSTANCE);
+    }
+
+    /**
+     * @param modelScorerFactory pluggable phenotype similarity strategy.
+     */
+    public PhivePriority(PriorityService priorityService, ModelScorerFactory modelScorerFactory) {
         this.priorityService = priorityService;
+        this.modelScorerFactory = modelScorerFactory;
     }
 
     /**
@@ -89,7 +101,7 @@ public class PhivePriority implements Prioritiser<PhivePriorityResult> {
                 .filter(model -> wantedGeneIds.contains(model.entrezGeneId()))
                 .collect(ImmutableSet.toImmutableSet());
 
-        List<GeneModelPhenotypeMatch> scoredModels = scoreModels(humanMousePhenotypeMatcher, modelsToScore);
+        List<GeneModelPhenotypeMatch> scoredModels = scoreModels(hpoPhenotypeTerms, humanMousePhenotypeMatcher, modelsToScore);
 
         //n.b. this will contain models but with a phenotype score of zero
         Map<Integer, Optional<GeneModelPhenotypeMatch>> geneModelPhenotypeMatches = scoredModels.parallelStream()
@@ -119,10 +131,10 @@ public class PhivePriority implements Prioritiser<PhivePriorityResult> {
         return modelPhenotypeMatch -> new PhivePriorityResult(modelPhenotypeMatch.entrezGeneId(), modelPhenotypeMatch.humanGeneSymbol(), modelPhenotypeMatch.score(), modelPhenotypeMatch);
     }
 
-    private List<GeneModelPhenotypeMatch> scoreModels(PhenotypeMatcher organismPhenotypeMatcher, Collection<GeneModel> models) {
+    private List<GeneModelPhenotypeMatch> scoreModels(List<PhenotypeTerm> queryTerms, PhenotypeMatcher organismPhenotypeMatcher, Collection<GeneModel> models) {
         Organism organism = organismPhenotypeMatcher.getOrganism();
 
-        ModelScorer<GeneModel> modelScorer = PhenodigmModelScorer.forSingleCrossSpecies(organismPhenotypeMatcher);
+        ModelScorer<GeneModel> modelScorer = modelScorerFactory.forSingleCrossSpecies(queryTerms, organismPhenotypeMatcher);
 
         logger.info("Scoring {} models", organism);
         Instant timeStart = Instant.now();

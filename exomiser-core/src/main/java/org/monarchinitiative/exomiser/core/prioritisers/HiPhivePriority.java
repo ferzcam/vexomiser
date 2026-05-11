@@ -60,15 +60,28 @@ public class HiPhivePriority implements Prioritiser<HiPhivePriorityResult> {
     private final HiPhiveOptions options;
     private final DataMatrix randomWalkMatrix;
     private final PriorityService priorityService;
+    private final ModelScorerFactory modelScorerFactory;
 
     /**
-     * @param options
-     * @param randomWalkMatrix
+     * Uses the default Phenodigm IC-based semantic similarity scorer.
      */
     public HiPhivePriority(HiPhiveOptions options, DataMatrix randomWalkMatrix, PriorityService priorityService) {
+        this(options, randomWalkMatrix, priorityService, PhenodigmModelScorerFactory.INSTANCE);
+    }
+
+    /**
+     * @param modelScorerFactory pluggable phenotype similarity strategy;
+     *                           use {@link PhenodigmModelScorerFactory#INSTANCE} for the default
+     *                           Phenodigm behaviour or {@link IndigenaModelScorerFactory} for
+     *                           embedding-based BMA scoring.
+     */
+    public HiPhivePriority(HiPhiveOptions options, DataMatrix randomWalkMatrix,
+                           PriorityService priorityService,
+                           ModelScorerFactory modelScorerFactory) {
         this.options = options;
         this.randomWalkMatrix = randomWalkMatrix;
         this.priorityService = priorityService;
+        this.modelScorerFactory = modelScorerFactory;
     }
 
     @Override
@@ -167,7 +180,7 @@ public class HiPhivePriority implements Prioritiser<HiPhivePriorityResult> {
                     .filter(model -> wantedGeneIds.contains(model.entrezGeneId()))
                     .collect(toUnmodifiableSet());
 
-            List<GeneModelPhenotypeMatch> geneModelPhenotypeMatches = scoreModels(referenceQueryPhenotypeMatch, organismPhenotypeMatcher, modelsToScore);
+            List<GeneModelPhenotypeMatch> geneModelPhenotypeMatches = scoreModels(hpoPhenotypeTerms, referenceQueryPhenotypeMatch, organismPhenotypeMatcher, modelsToScore);
             for (GeneModelPhenotypeMatch scoredModel : geneModelPhenotypeMatches) {
                 if (scoredModel.score() > 0) {
                     scoredModelsByGene.put(scoredModel.entrezGeneId(), scoredModel);
@@ -199,10 +212,10 @@ public class HiPhivePriority implements Prioritiser<HiPhivePriorityResult> {
     // against all possible models (disease, mouse, fish), whereas in Phive we're only comparing against mouse.
     // For HiPhive the referenceQueryPhenotypeMatch is going to be an HPO self-hit for every term in the query set so the
     // scoreModelPhenotypeMatch uses hpoIds.size() as the numMatchedQueryPhenotypes.
-    private List<GeneModelPhenotypeMatch> scoreModels(QueryPhenotypeMatch referenceQueryPhenotypeMatch, PhenotypeMatcher organismPhenotypeMatcher, Collection<GeneModel> models) {
+    private List<GeneModelPhenotypeMatch> scoreModels(List<PhenotypeTerm> queryTerms, QueryPhenotypeMatch referenceQueryPhenotypeMatch, PhenotypeMatcher organismPhenotypeMatcher, Collection<GeneModel> models) {
         Organism organism = organismPhenotypeMatcher.getOrganism();
 
-        ModelScorer<GeneModel> modelScorer = PhenodigmModelScorer.forMultiCrossSpecies(referenceQueryPhenotypeMatch, organismPhenotypeMatcher);
+        ModelScorer<GeneModel> modelScorer = modelScorerFactory.forMultiCrossSpecies(queryTerms, referenceQueryPhenotypeMatch, organismPhenotypeMatcher);
 
         logger.debug("Scoring {} models", organism);
         Instant timeStart = Instant.now();
