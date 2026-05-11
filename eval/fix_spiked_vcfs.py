@@ -49,13 +49,19 @@ def fix_one(row):
 
     sample = vcf_sample_name(src)
 
-    # Write a one-record VCF for the causal variant
+    # Build mini-VCF reusing the source header (so contig/FORMAT defs are present)
+    hdr = subprocess.check_output(
+        ["bcftools", "view", "-h", src], text=True
+    )
+    # Ensure GT FORMAT line is in the header
+    fmt_line = '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+    if "##FORMAT=<ID=GT" not in hdr:
+        hdr = hdr.replace("#CHROM\t", fmt_line + "#CHROM\t")
+
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".vcf", delete=False
     ) as tmp:
-        tmp.write("##fileformat=VCFv4.1\n")
-        tmp.write('##FILTER=<ID=PASS,Description="All filters passed">\n')
-        tmp.write(f"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{sample}\n")
+        tmp.write(hdr)
         tmp.write(f"{chrom}\t{pos}\t.\t{ref}\t{alt}\t100\tPASS\t.\tGT\t{gt}\n")
         tmp_path = tmp.name
 
