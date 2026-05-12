@@ -10,7 +10,8 @@ Graph options (cumulative):
   Graph 1 (baseline): UPheno OWL2VecStar projection (HP + MP + UPHENO terms)
   Graph 2: + gene → has_phenotype → MP/HP
              Primary: MGI mouse-knockout phenotypes (human ortholog → MP terms)
-             Fallback: PAVS training case HPO terms for genes with no MGI ortholog
+             Additive: HPO gene-phenotype annotations (genes_to_phenotype.txt) if --hpo-gene-phenotypes given
+             Fallback: PAVS training case HPO terms for genes not covered by any database source
   Graph 3: + disease → has_symptom → HP (training diseases only; inductive)
   Graph 4: + gene → associated_with → disease (supervised; training only)
 
@@ -123,6 +124,29 @@ def load_mgi_gene_phenotypes(mgi_pheno_csv: str, graph1_entities: set) -> dict:
     return {g: sorted(p) for g, p in mgi_to_phenos.items()}
 
 
+def load_hpo_gene_phenotypes(hpo_g2p_tsv: str, graph1_entities: set) -> dict:
+    """
+    Load HPO genes_to_phenotype.txt → {gene_symbol: [hp_iri, ...]}
+    filtered to HP terms present in the UPheno graph.
+    Format: ncbi_gene_id <TAB> gene_symbol <TAB> hpo_id <TAB> ...
+    """
+    df = pd.read_csv(hpo_g2p_tsv, sep="\t", dtype=str, comment="#")
+    gene_to_hps: dict[str, set] = {}
+    for _, row in df.iterrows():
+        symbol = str(row["gene_symbol"]).strip()
+        hp_id  = str(row["hpo_id"]).strip()
+        if not hp_id.startswith("HP:"):
+            continue
+        iri = hp_iri(hp_id)
+        if iri not in graph1_entities:
+            continue
+        gene_to_hps.setdefault(symbol, set()).add(iri)
+    n_genes = len(gene_to_hps)
+    n_terms = sum(len(v) for v in gene_to_hps.values())
+    logger.info(f"  HPO gene phenotypes: {n_genes} genes, {n_terms:,} gene-HP pairs")
+    return {g: sorted(p) for g, p in gene_to_hps.items()}
+
+
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
@@ -165,17 +189,18 @@ def build_graph(upheno_edges_path: str,
                 test_disease_ids: set,
                 graph2: bool, graph3: bool, graph4: bool,
                 human_to_mgi: dict = None,
-                mgi_to_phenos: dict = None):
+                mgi_to_phenos: dict = None,
+                hpo_gene_phenos_path: str = None):
     """
     Returns (triples, gene2pheno, disease2pheno).
 
-    gene2pheno:    gene_symbol → list of phenotype IRIs (MP from MGI + HP from cases)
+    gene2pheno:    gene_symbol → list of phenotype IRIs
     disease2pheno: disease_id_norm → list of HP IRIs (from training cases)
 
-    If human_to_mgi and mgi_to_phenos are provided, MGI mouse-knockout MP
-    phenotypes (via human ortholog mapping) are used as the primary gene-phenotype
-    source. Training-case HPO terms are added as a fallback for genes with no
-    mouse ortholog.
+    Priority for gene phenotype source (all sources are additive):
+      1. MGI mouse-knockout MP phenotypes (via human ortholog mapping)
+      2. HPO gene-phenotype annotations from genes_to_phenotype.txt
+      3. Training-case HPO terms (fallback for genes not covered by 1 or 2)
     """
     logger.info("Loading UPheno OWL2VecStar edges (Graph 1)...")
     triples = []
@@ -192,7 +217,7 @@ def build_graph(upheno_edges_path: str,
 
     logger.info(f"  {len(triples):,} Graph-1 triples, {len(graph1_entities):,} entities")
 
-    # ---- gene2pheno: MGI mouse knockouts (primary) + training cases (fallback) ----
+    # ---- gene2pheno: MGI (primary) + HPO annotations + training-case fallback ----
     gene2pheno: dict[str, set] = {}
     use_mgi = human_to_mgi is not None and mgi_to_phenos is not None
 
@@ -205,14 +230,23 @@ def build_graph(upheno_edges_path: str,
                 mgi_covered += 1
         logger.info(f"  MGI phenotypes loaded for {mgi_covered} genes")
 
-    # Fallback: training-case HPO terms for genes not covered by MGI
+    if hpo_gene_phenos_path is not None:
+        hpo_gene_phenos = load_hpo_gene_phenotypes(hpo_gene_phenos_path, graph1_entities)
+        hpo_covered = 0
+        for gene, hps in hpo_gene_phenos.items():
+            if hps:
+                gene2pheno.setdefault(gene, set()).update(hps)
+                hpo_covered += 1
+        logger.info(f"  HPO gene phenotypes added for {hpo_covered} genes")
+
+    # Fallback: training-case HPO terms for genes not covered by any database source
     fallback = 0
     for _, row in train_cases.iterrows():
         gene = row["gene_symbol"]
         if not isinstance(gene, str):
             continue
-        if use_mgi and gene in gene2pheno:
-            continue    # already have richer MGI phenotypes
+        if gene in gene2pheno:
+            continue    # already have database phenotypes
         for hp in row["hpo_list"]:
             iri = hp_iri(hp)
             if iri not in graph1_entities:
@@ -220,7 +254,7 @@ def build_graph(upheno_edges_path: str,
             gene2pheno.setdefault(gene, set()).add(iri)
             fallback += 1
     if fallback:
-        logger.info(f"  Training-case HPO fallback: {fallback} edges for genes without MGI data")
+        logger.info(f"  Training-case HPO fallback: {fallback} edges for genes without database annotations")
 
     gene2pheno = {g: sorted(p) for g, p in gene2pheno.items()}
 
@@ -406,6 +440,10 @@ def evaluate(model, test_cases: pd.DataFrame, gene2pheno: dict,
 @ck.option("--hom-file", default=None,
            help="MGI human-mouse ortholog file (HOM_MouseHumanSequence.rpt). "
                 "Required when --mgi-gene-phenotypes is set.")
+@ck.option("--hpo-gene-phenotypes", default=None,
+           help="HPO genes_to_phenotype.txt (gene_symbol→hpo_id). "
+                "If given, adds human HP annotations for each gene in Graph 2, "
+                "replacing the training-case HPO fallback for covered genes.")
 @ck.option("--track", type=ck.Choice(["1", "2"]), default="1", show_default=True)
 @ck.option("--eval-split", type=ck.Choice(["val", "test"]), default="test", show_default=True,
            help="Split to evaluate on.")
@@ -419,7 +457,7 @@ def evaluate(model, test_cases: pd.DataFrame, gene2pheno: dict,
 @ck.option("--random-seed", type=int, default=0, show_default=True)
 @ck.option("--only-eval", is_flag=True,
            help="Skip training; load existing model checkpoint and evaluate.")
-def main(upheno_edges, mgi_gene_phenotypes, hom_file,
+def main(upheno_edges, mgi_gene_phenotypes, hom_file, hpo_gene_phenotypes,
          track, eval_split, graph2, graph3, graph4,
          embedding_dim, batch_size, learning_rate, num_epochs, random_seed, only_eval):
 
@@ -458,28 +496,23 @@ def main(upheno_edges, mgi_gene_phenotypes, hom_file,
         logger.info("Loading MGI ortholog mapping...")
         human_to_mgi = load_human_to_mgi(hom_file)
         logger.info(f"  {len(human_to_mgi)} human→MGI mappings")
-        # gene_phenotypes.csv needs graph1_entities filter; load it lazily inside build_graph
-        # Pass file path and let build_graph load after graph1 is built
         mgi_tag = "_mgi"
+
+    hpo_tag = "_hpo" if hpo_gene_phenotypes else ""
 
     # ---- Build graph ----
     graph_tag = ("4" if graph4 else "3" if graph3 else "2" if graph2 else "1")
     file_id = (
-        f"indigena_transd_track{track}_graph{graph_tag}{mgi_tag}"
+        f"indigena_transd_track{track}_graph{graph_tag}{mgi_tag}{hpo_tag}"
         f"_seed{random_seed}_dim{embedding_dim}_bs{batch_size}_lr{learning_rate}"
     )
     model_path = os.path.join(MODELS_DIR, f"{file_id}.pt")
 
     def _build():
         nonlocal mgi_to_phenos
-        # Load MGI phenotypes after graph1 is known (needs graph1_entities filter)
-        # We pass the file path and load inside build_graph; for simplicity, pre-load here
-        # with a placeholder filter (will be refined inside build_graph)
         h2m = human_to_mgi
         m2p = None
         if mgi_gene_phenotypes and hom_file:
-            # Temporarily load without entity filter to avoid chicken-and-egg;
-            # build_graph will filter to graph1_entities internally
             m2p_raw = pd.read_csv(mgi_gene_phenotypes)
             m2p = {}
             for _, row in m2p_raw.iterrows():
@@ -487,10 +520,12 @@ def main(upheno_edges, mgi_gene_phenotypes, hom_file,
                 m2p.setdefault(g, set()).add(p)
             m2p = {g: sorted(ps) for g, ps in m2p.items()}
             mgi_to_phenos = m2p
+
         return build_graph(
             upheno_edges, train_cases, test_disease_ids,
             graph2, graph3, graph4,
-            human_to_mgi=h2m, mgi_to_phenos=m2p
+            human_to_mgi=h2m, mgi_to_phenos=m2p,
+            hpo_gene_phenos_path=hpo_gene_phenotypes or None
         )
 
     if not only_eval:
