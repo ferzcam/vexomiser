@@ -247,6 +247,21 @@ def build_all_prioritisers(phenotype_data_dir: str, embeddings_path=None):
         "phive":  factory.makePhivePrioritiser(),
     }
 
+    # Resnik-HiPhive / Resnik-Phive / Resnik-PhenIX (always added)
+    from org.monarchinitiative.exomiser.core.phenotype import ResnikModelScorerFactory
+    resnik_factory = ResnikModelScorerFactory()
+    hiphive_opts = HiPhiveOptions.defaults()
+    phenix_opts  = HiPhiveOptions.builder().runParams("human").build()
+    prioritisers.update({
+        "resnik_hiphive": HiPhivePriority(
+            hiphive_opts, data_matrix, priority_service, resnik_factory
+        ),
+        "resnik_phive":  PhivePriority(priority_service, resnik_factory),
+        "resnik_phenix": HiPhivePriority(
+            phenix_opts, data_matrix, priority_service, resnik_factory
+        ),
+    })
+
     if embeddings_path:
         from org.monarchinitiative.exomiser.core.phenotype import (
             IndigenaEmbeddings, IndigenaModelScorerFactory,
@@ -254,8 +269,6 @@ def build_all_prioritisers(phenotype_data_dir: str, embeddings_path=None):
         emb = IndigenaEmbeddings.load(JPaths.get(os.path.abspath(embeddings_path)))
         scorer_factory = IndigenaModelScorerFactory(emb)
 
-        hiphive_opts = HiPhiveOptions.defaults()
-        phenix_opts = HiPhiveOptions.builder().runParams("human").build()
         prioritisers.update({
             "indigena_hiphive": HiPhivePriority(
                 hiphive_opts, data_matrix, priority_service, scorer_factory
@@ -493,9 +506,9 @@ def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir, sk
     # ------------------------------------------------------------------
     summary_path = os.path.join(RESULTS_DIR, f"exomiser_track2{split_tag}_summary.txt")
     method_order = [
-        "hiphive", "indigena_hiphive",
-        "phenix",  "indigena_phenix",
-        "phive",   "indigena_phive",
+        "hiphive", "indigena_hiphive", "resnik_hiphive",
+        "phenix",  "indigena_phenix",  "resnik_phenix",
+        "phive",   "indigena_phive",   "resnik_phive",
     ]
     with open(summary_path, "w") as sf:
         emit(sf, f"# Exomiser Track 2 — split: {split}")
