@@ -1,27 +1,32 @@
 /**
  * Semantic similarity baseline (Resnik/Lin + BMA) on the PAVS benchmark.
  *
- * Adapted from multihop-gda/semantic_similarity.groovy for the vexomiser eval setup:
- *   - Loads HP OBO (not UPheno)
- *   - Gene phenotypes come from training-case HPO terms (not MGI MP)
- *   - "Disease" phenotypes are the patient HPO terms from each test case directly
- *   - Output TSV matches the format expected by eval/metrics.py
+ * Based on multihop-gda/semantic_similarity.groovy. Key changes for PAVS:
+ *   - Loads upheno.owl (RDF_XML, same as original)
+ *   - Gene phenotypes: training-case HPO terms (instead of MGI MP terms)
+ *   - "Disease" phenotypes: patient HPO terms from test cases directly
+ *     (instead of phenotype.hpoa lookup)
+ *   - Output TSV matches eval/metrics.py format
  *
  * Usage:
  *   groovy eval/semsim_baseline.groovy \
  *     --data-dir data \
- *     --hp-obo exomiser-data/2406_phenotype/hp.obo \
+ *     --upheno /path/to/upheno.owl \
  *     --ic resnik --pw resnik --gw bma \
  *     --split test \
  *     --out data/results/semsim_resnik_bma_test.tsv
  */
 
-@Grab(group='com.github.sharispe', module='slib-sml',         version='0.9.1')
-@Grab(group='net.sourceforge.owlapi', module='owlapi-api',     version='4.2.5')
+@Grab(group='com.github.sharispe', module='slib-sml',            version='0.9.1')
+@Grab(group='net.sourceforge.owlapi', module='owlapi-api',        version='4.2.5')
 @Grab(group='net.sourceforge.owlapi', module='owlapi-apibinding', version='4.2.5')
-@Grab(group='net.sourceforge.owlapi', module='owlapi-impl',    version='4.2.5')
-@Grab(group='ch.qos.logback',  module='logback-classic',       version='1.2.3')
-@Grab(group='org.slf4j',       module='slf4j-api',             version='1.7.30')
+@Grab(group='net.sourceforge.owlapi', module='owlapi-impl',       version='4.2.5')
+@Grab(group='ch.qos.logback',  module='logback-classic',          version='1.2.3')
+@Grab(group='org.slf4j',       module='slf4j-api',                version='1.7.30')
+@Grab(group='org.codehaus.gpars', module='gpars',                 version='1.1.0')
+
+import org.semanticweb.owlapi.model.*
+import org.semanticweb.owlapi.apibinding.OWLManager
 
 import slib.sml.sm.core.engine.SM_Engine
 import slib.sml.sm.core.metrics.ic.utils.*
@@ -37,80 +42,81 @@ import slib.graph.algo.utils.*
 
 import org.openrdf.model.vocabulary.RDF
 
-import groovy.cli.commons.CliBuilder
+import groovyx.gpars.GParsPool
 
-import java.util.concurrent.*
+import groovy.cli.commons.CliBuilder
+import java.nio.file.Paths
+
 import java.util.logging.*
 
-// ── Logger ─────────────────────────────────────────────────────────────────
 Logger log = Logger.getLogger("semsim_baseline")
 ConsoleHandler ch = new ConsoleHandler()
-ch.setLevel(Level.INFO)
+ch.setLevel(Level.ALL)
 ch.setFormatter(new SimpleFormatter())
 log.addHandler(ch)
-log.setLevel(Level.INFO)
+log.setLevel(Level.ALL)
 log.setUseParentHandlers(false)
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
 def cli = new CliBuilder(usage: 'semsim_baseline.groovy [options]')
-cli.d(longOpt: 'data-dir', args: 1, required: true,  'Path to vexomiser/data/')
-cli.hp(longOpt: 'hp-obo',  args: 1, required: true,  'Path to hp.obo')
-cli.ic(longOpt: 'ic',      args: 1, defaultValue: 'resnik', 'IC measure (resnik)')
-cli.pw(longOpt: 'pw',      args: 1, defaultValue: 'resnik', 'Pairwise measure (resnik|lin)')
-cli.gw(longOpt: 'gw',      args: 1, defaultValue: 'bma',    'Groupwise measure (bma|bmm)')
-cli.s(longOpt:  'split',   args: 1, defaultValue: 'test',   'Split (test|val|train)')
-cli.o(longOpt:  'out',     args: 1, required: true,  'Output TSV file')
-cli.t(longOpt:  'threads', args: 1, defaultValue: '0', 'Worker threads (0 = #CPUs)')
+cli.d(longOpt: 'data-dir',  args: 1, required: true,  'Path to vexomiser/data/')
+cli.u(longOpt: 'upheno',    args: 1, required: true,  'Path to upheno.owl')
+cli.ic(longOpt: 'ic',       args: 1, defaultValue: 'resnik', 'IC measure (resnik)')
+cli.pw(longOpt: 'pw',       args: 1, defaultValue: 'resnik', 'Pairwise measure (resnik|lin)')
+cli.gw(longOpt: 'gw',       args: 1, defaultValue: 'bma',    'Groupwise measure (bma|bmm)')
+cli.s(longOpt:  'split',    args: 1, defaultValue: 'test',   'Split (test|val|train)')
+cli.o(longOpt:  'out',      args: 1, required: true,  'Output TSV file')
 
 def opts = cli.parse(args)
 if (!opts) return
 
 String dataDir   = opts.d
-String hpObo     = opts.hp
+String uphenoOwl = opts.u
 String icMeasure = opts.ic
 String pwMeasure = opts.pw
 String gwMeasure = opts.gw
 String split     = opts.s
 String outPath   = opts.o
-int    nThreads  = opts.t.toInteger() ?: Runtime.getRuntime().availableProcessors()
 
-log.info("ic=${icMeasure} pw=${pwMeasure} gw=${gwMeasure} split=${split} threads=${nThreads}")
+log.info("ic=${icMeasure} pw=${pwMeasure} gw=${gwMeasure} split=${split}")
 
-// ── 1. Load HP OBO ──────────────────────────────────────────────────────────
-log.info("Loading HP ontology: ${hpObo}")
+// ── 1. Load UPheno OWL and extract HP term URIs ─────────────────────────────
+log.info("Loading UPheno OWL: ${uphenoOwl}")
+def manager  = OWLManager.createOWLOntologyManager()
+def ontology = manager.loadOntologyFromOntologyDocument(new File(uphenoOwl))
+def classes  = ontology.getClassesInSignature().collect { it.toStringID() }
+
+def existingHpUris = new HashSet<String>()
+classes.each { cls ->
+    if (cls.contains("HP_")) existingHpUris.add(cls)
+}
+log.info("HP terms in UPheno: ${existingHpUris.size()}")
+
+def hpToUri = { String hp -> "http://purl.obolibrary.org/obo/" + hp.trim().replace(":", "_") }
+
+// ── 2. Build slib graph from UPheno OWL ─────────────────────────────────────
 def factory  = URIFactoryMemory.getSingleton()
-def graphUri = factory.getURI("http://purl.obolibrary.org/obo/")
+def graphUri = factory.getURI("http://purl.obolibrary.org/obo/GDA_")
+factory.loadNamespacePrefix("GDA", graphUri.toString())
 def graph    = new GraphMemory(graphUri)
 
-// Register namespace prefixes used in hp.obo so slib can resolve term URIs
-["HP", "MP", "DOID", "MONDO", "ORPHA", "EFO", "NCIT", "MEDDRA", "UMLS",
- "MSH", "MPATH", "COHD", "EMG", "EPCC"].each { prefix ->
-    factory.loadNamespacePrefix(prefix, "http://purl.obolibrary.org/obo/${prefix}_")
-}
+def goConf = new GDataConf(GFormat.RDF_XML, Paths.get(uphenoOwl).toString())
+GraphLoaderGeneric.populate(goConf, graph)
 
-GraphLoaderGeneric.populate(new GDataConf(GFormat.OBO, hpObo), graph)
-
-// Add a virtual root (required by slib for IC computation)
-def virtualRoot = factory.getURI("http://vexomiser.org/semsim_virtual_root")
+def virtualRoot = factory.getURI("http://purl.obolibrary.org/obo/GDA_virtual_root")
 def rooting = new GAction(GActionType.REROOTING)
 rooting.addParameter("root_uri", virtualRoot.stringValue())
 GraphActionExecutor.applyAction(factory, rooting, graph)
 
-def knownUris = graph.getV().collect { it.stringValue() }.toSet()
-log.info("Ontology nodes after loading: ${knownUris.size()}")
-
-// HP:0001263 → http://purl.obolibrary.org/obo/HP_0001263
-def hpToUri = { String hp -> "http://purl.obolibrary.org/obo/" + hp.trim().replace(":", "_") }
-
-// ── 2. Eval gene pool (all unique genes in dataset, sorted) ─────────────────
-log.info("Loading eval gene pool from track1_cases.tsv")
+// ── 3. Eval gene pool (all unique genes in dataset, sorted) ─────────────────
+log.info("Loading eval gene pool")
 def evalGenes = new File("${dataDir}/track1_cases.tsv").readLines().tail()
     .collect { it.split('\t')[5] }
     .unique()
     .sort()
 log.info("Eval genes: ${evalGenes.size()}")
 
-// ── 3. Build gene→HP map from training split only ───────────────────────────
+// ── 4. Build gene → HP map from training split ──────────────────────────────
 log.info("Building gene phenotype map from training split")
 def gene2hpo = new HashMap<String, Set<String>>()
 new File("${dataDir}/splits/train.tsv").readLines().tail().each { line ->
@@ -119,16 +125,15 @@ new File("${dataDir}/splits/train.tsv").readLines().tail().each { line ->
     def gene   = parts[5]
     def hpoStr = parts[4]
     hpoStr.split(';').each { entry ->
-        def hp  = entry.split('\\|')[0].trim()
-        def uri = hpToUri(hp)
-        if (knownUris.contains(uri)) {
+        def uri = hpToUri(entry.split('\\|')[0])
+        if (existingHpUris.contains(uri)) {
             gene2hpo.computeIfAbsent(gene, { new HashSet<>() }).add(uri)
         }
     }
 }
 log.info("Genes with HP annotations: ${gene2hpo.size()} / ${evalGenes.size()}")
 
-// ── 4. Add gene annotations to graph (for corpus-based IC) ─────────────────
+// ── 5. Add gene annotations to graph for corpus-based IC ───────────────────
 gene2hpo.each { gene, hpUris ->
     def geneUri = factory.getURI("http://vexomiser.org/gene/" + gene.replaceAll('[^A-Za-z0-9]', '_'))
     hpUris.each { hp ->
@@ -136,25 +141,23 @@ gene2hpo.each { gene, hpUris ->
     }
 }
 
-// ── 5. Build SM_Engine ──────────────────────────────────────────────────────
+// ── 6. Build SM_Engine ──────────────────────────────────────────────────────
 log.info("Building SM_Engine")
-def engine = new SM_Engine(graph)
-
-def icConf = new IC_Conf_Corpus(icMeasureResolver(icMeasure))
+def engine   = new SM_Engine(graph)
+def icConf   = new IC_Conf_Corpus(icMeasureResolver(icMeasure))
 def smConfPW = new SMconf(pwMeasureResolver(pwMeasure))
 smConfPW.setICconf(icConf)
 def smConfGW = new SMconf(gwMeasureResolver(gwMeasure))
 
-// ── 6. Load test cases ──────────────────────────────────────────────────────
+// ── 7. Load test cases ──────────────────────────────────────────────────────
 log.info("Loading ${split} split")
 def testCases = new File("${dataDir}/splits/${split}.tsv").readLines().tail()
 log.info("Cases to score: ${testCases.size()}")
 
-// ── 7. Score in parallel ────────────────────────────────────────────────────
-log.info("Scoring with ${nThreads} threads…")
-def pool    = Executors.newFixedThreadPool(nThreads)
-def futures = testCases.collect { line ->
-    pool.submit({
+// ── 8. Score in parallel ────────────────────────────────────────────────────
+log.info("Scoring…")
+def allResults = GParsPool.withPool {
+    testCases.collectParallel { line ->
         try {
             def parts      = line.split('\t')
             def caseId     = parts[0]
@@ -162,8 +165,8 @@ def futures = testCases.collect { line ->
             def hpoStr     = parts[4]
 
             def patientHPs = hpoStr.split(';')
-                .collect { hpToUri(it.split('\\|')[0]) }
-                .findAll  { knownUris.contains(it) }
+                .collect  { hpToUri(it.split('\\|')[0]) }
+                .findAll  { existingHpUris.contains(it) }
                 .collect  { factory.getURI(it) }
                 .toSet()
 
@@ -181,13 +184,10 @@ def futures = testCases.collect { line ->
             log.warning("Error: ${e.message}")
             null
         }
-    } as Callable)
+    }.findAll { it != null }
 }
 
-def allResults = futures.collect { it.get() }.findAll { it != null }
-pool.shutdown()
-
-// ── 8. Write output ─────────────────────────────────────────────────────────
+// ── 9. Write output ─────────────────────────────────────────────────────────
 log.info("Writing ${allResults.size()} results to ${outPath}")
 new File(outPath).parentFile?.mkdirs()
 new File(outPath).withWriter { w ->
