@@ -81,6 +81,13 @@ log.info("Loading HP ontology: ${hpObo}")
 def factory  = URIFactoryMemory.getSingleton()
 def graphUri = factory.getURI("http://purl.obolibrary.org/obo/")
 def graph    = new GraphMemory(graphUri)
+
+// Register namespace prefixes used in hp.obo so slib can resolve term URIs
+["HP", "MP", "DOID", "MONDO", "ORPHA", "EFO", "NCIT", "MEDDRA", "UMLS",
+ "MSH", "MPATH", "COHD", "EMG", "EPCC"].each { prefix ->
+    factory.loadNamespacePrefix(prefix, "http://purl.obolibrary.org/obo/${prefix}_")
+}
+
 GraphLoaderGeneric.populate(new GDataConf(GFormat.OBO, hpObo), graph)
 
 // Add a virtual root (required by slib for IC computation)
