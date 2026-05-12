@@ -39,7 +39,7 @@ def print_as_tex(metrics, title, full_precision=False):
         
                                         
     
-def compute_metrics(filename, verbose=False, output_ranks=False):
+def compute_metrics(filename, verbose=False, output_ranks=False, seed=42):
     with open(filename, "r") as f:
         results = f.readlines()
         results = [x.strip().split("\t") for x in results]
@@ -69,6 +69,8 @@ def compute_metrics(filename, verbose=False, output_ranks=False):
     genes_ids = th.arange(len(results[0][3:]))
     if verbose:
         print(f"Number of evaluated genes: {len(genes_ids)}")
+
+    th.manual_seed(seed)
 
     for i in range(len(results)):
         disease = results[i][1]
