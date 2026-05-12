@@ -81,7 +81,7 @@ log.info("Loading HP ontology: ${hpObo}")
 def factory  = URIFactoryMemory.getSingleton()
 def graphUri = factory.getURI("http://purl.obolibrary.org/obo/")
 def graph    = new GraphMemory(graphUri)
-GraphLoaderGeneric.populate(new GDataConf(GFormat.OBO_1_4, hpObo), graph)
+GraphLoaderGeneric.populate(new GDataConf(GFormat.OBO, hpObo), graph)
 
 // Add a virtual root (required by slib for IC computation)
 def virtualRoot = factory.getURI("http://vexomiser.org/semsim_virtual_root")
