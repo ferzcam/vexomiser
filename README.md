@@ -160,7 +160,7 @@ IC-based similarity in each method, with identical gene-phenotype model associat
 | Phive | 847.2 | 0.026 | 0.010 | 0.025 | 0.048 | 0.193 | 0.626 |
 | INDIGENA-Phive | 886.7 | 0.017 | 0.010 | 0.017 | 0.027 | 0.058 | 0.608 |
 | INDIGENA G4 (HPO only) | 761.2 | 0.116 | 0.079 | 0.118 | 0.191 | 0.375 | 0.664 |
-| INDIGENA G4 + MGI | 997.8 | 0.019 | 0.012 | 0.017 | 0.027 | 0.069 | 0.559 |
+| Resnik BMA | 760.0 | 0.128 | 0.089 | 0.124 | 0.232 | 0.398 | 0.664 |
 
 The gene pool is fixed to all 2,258 genes in both cases so results are directly comparable. Small differences between full and test split are sampling variance.
 
