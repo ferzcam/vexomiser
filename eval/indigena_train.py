@@ -219,7 +219,8 @@ def build_graph(upheno_edges_path: str,
                 graph2: bool, graph3: bool, graph4: bool,
                 human_to_mgi: dict = None,
                 mgi_to_phenos: dict = None,
-                hpo_gene_phenos_path: str = None):
+                hpo_gene_phenos_path: str = None,
+                no_hpo_fallback: bool = False):
     """
     Returns (triples, gene2pheno, disease2pheno).
 
@@ -270,20 +271,23 @@ def build_graph(upheno_edges_path: str,
 
     # Fallback: training-case HPO terms for genes not covered by any database source
     fallback = 0
-    for _, row in train_cases.iterrows():
-        gene = row["gene_symbol"]
-        if not isinstance(gene, str):
-            continue
-        if gene in gene2pheno:
-            continue    # already have database phenotypes
-        for hp in row["hpo_list"]:
-            iri = hp_iri(hp)
-            if iri not in graph1_entities:
+    if not no_hpo_fallback:
+        for _, row in train_cases.iterrows():
+            gene = row["gene_symbol"]
+            if not isinstance(gene, str):
                 continue
-            gene2pheno.setdefault(gene, set()).add(iri)
-            fallback += 1
-    if fallback:
-        logger.info(f"  Training-case HPO fallback: {fallback} edges for genes without database annotations")
+            if gene in gene2pheno:
+                continue    # already have database phenotypes
+            for hp in row["hpo_list"]:
+                iri = hp_iri(hp)
+                if iri not in graph1_entities:
+                    continue
+                gene2pheno.setdefault(gene, set()).add(iri)
+                fallback += 1
+        if fallback:
+            logger.info(f"  Training-case HPO fallback: {fallback} edges for genes without database annotations")
+    else:
+        logger.info("  Training-case HPO fallback: disabled")
 
     gene2pheno = {g: sorted(p) for g, p in gene2pheno.items()}
 
@@ -558,10 +562,12 @@ def evaluate(model, test_cases: pd.DataFrame, gene2pheno: dict,
 @ck.option("--learning-rate", type=float, default=0.001, show_default=True)
 @ck.option("--num-epochs", type=int, default=300, show_default=True)
 @ck.option("--random-seed", type=int, default=0, show_default=True)
+@ck.option("--no-hpo-fallback", is_flag=True,
+           help="Skip training-case HPO fallback in Graph 2. When set, genes with no MGI ortholog get no G2 phenotype edges.")
 @ck.option("--only-eval", is_flag=True,
            help="Skip training; load existing model checkpoint and evaluate.")
 def main(upheno_edges, mgi_gene_phenotypes, hom_file, hpo_gene_phenotypes, phenotype_hpoa,
-         eval_gene_phenotypes,
+         eval_gene_phenotypes, no_hpo_fallback,
          track, eval_split, graph2, graph3, graph4,
          embedding_dim, batch_size, learning_rate, num_epochs, random_seed, only_eval):
 
@@ -602,7 +608,7 @@ def main(upheno_edges, mgi_gene_phenotypes, hom_file, hpo_gene_phenotypes, pheno
         logger.info(f"  {len(human_to_mgi)} human→MGI mappings")
         mgi_tag = "_mgi"
 
-    hpo_tag = "_hpo" if hpo_gene_phenotypes else ""
+    hpo_tag = "_hpo" if hpo_gene_phenotypes else ("_mgi_only" if no_hpo_fallback else "")
 
     # ---- Build graph ----
     graph_tag = ("4" if graph4 else "3" if graph3 else "2" if graph2 else "1")
@@ -629,7 +635,8 @@ def main(upheno_edges, mgi_gene_phenotypes, hom_file, hpo_gene_phenotypes, pheno
             upheno_edges, train_cases, test_disease_ids,
             graph2, graph3, graph4,
             human_to_mgi=h2m, mgi_to_phenos=m2p,
-            hpo_gene_phenos_path=hpo_gene_phenotypes or None
+            hpo_gene_phenos_path=hpo_gene_phenotypes or None,
+            no_hpo_fallback=no_hpo_fallback
         )
 
     if not only_eval:

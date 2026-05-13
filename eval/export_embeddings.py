@@ -49,8 +49,10 @@ from indigena_train import (
 @ck.option("--track", type=int, default=1, show_default=True)
 @ck.option("--output", default=None,
            help="Output TSV path. Default: model_path with .pt replaced by _embeddings.tsv.")
+@ck.option("--no-hpo-fallback", is_flag=True,
+           help="Must match the flag used during training if --no-hpo-fallback was set.")
 def main(model_path, upheno_edges, mgi_gene_phenotypes, hom_file,
-         graph2, graph3, graph4, track, output):
+         graph2, graph3, graph4, track, output, no_hpo_fallback):
 
     if output is None:
         output = model_path.replace(".pt", "_embeddings.tsv")
@@ -82,6 +84,7 @@ def main(model_path, upheno_edges, mgi_gene_phenotypes, hom_file,
         upheno_edges, train_cases, test_disease_ids,
         graph2, graph3, graph4,
         human_to_mgi=human_to_mgi, mgi_to_phenos=mgi_to_phenos,
+        no_hpo_fallback=no_hpo_fallback,
     )
 
     mowl_triples = [Edge(s, r, d) for s, r, d in sorted(triples)]
