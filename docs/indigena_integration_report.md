@@ -100,26 +100,24 @@ INDIGENA-PhenIX integration would produce.
 
 ### Standalone INDIGENA
 
-When run as a standalone gene ranker using only the G4 gene–disease embeddings (HPO-only
-configuration, test split):
+When run as a standalone gene ranker (test split, 518 cases, 2,258 genes), without
+Exomiser's gene models. Scoring mirrors Exomiser's per-disease structure:
+`score(gene) = max_d BMA(patient_HPs, disease_d_HPs)` using OMIM disease models from
+`phenotype.hpoa`, with gene→disease links from `genes_to_phenotype.txt`.
 
-| Configuration | MRR | Hits@10 | AUC |
-|---|---|---|---|
-| INDIGENA* | 0.116 | 0.191 | 0.664 |
+| Configuration | MR | MRR | Hits@1 | Hits@3 | Hits@10 | Hits@100 | AUC |
+|---|---|---|---|---|---|---|---|
+| v1 — MGI only | 407.6 | 0.275 | 0.236 | 0.278 | 0.336 | 0.544 | 0.821 |
+| v2 — MGI + HPO | 400.9 | 0.274 | 0.232 | 0.284 | 0.344 | 0.544 | 0.822 |
 
-\* Gene phenotype associations (G2) derived from training-case HPO terms only; evaluated using G4 gene–disease embeddings without Exomiser's gene models. This limits coverage to genes appearing in training cases. Using the full HPO gene-to-phenotype database would improve coverage but risks data leakage, as those annotations are derived from the same disease–gene associations that INDIGENA is trained to predict.
+Both configurations perform at or above HiPhive (MRR 0.269) as standalone gene rankers,
+with v1 (pure MGI mouse-knockout phenotypes) and v2 (MGI + HPO gene annotations) essentially
+tied. Adding HPO gene–phenotype annotations to the training graph does not improve MRR;
+v2 gains slightly on Hits@3 and Hits@10 while v1 is marginally better on Hits@1.
 
-The performance gap between standalone INDIGENA (MRR 0.116) and HiPhive (MRR 0.269)
-is explained by the exclusion of OMIM: HiPhive's strong performance comes largely from
-matching patient HP terms against known disease HP profiles — a near-retrieval task —
-whereas INDIGENA is performing genuine inductive inference without access to those
-associations. Despite this, the standalone AUC (0.664) shows that INDIGENA does learn a
-useful gene–disease signal. The complementary nature of INDIGENA and Exomiser methods
-becomes apparent in the hybrid evaluation (next section): plugging INDIGENA's embeddings
-into Exomiser's gene model associations recovers most of the performance gap, because
-INDIGENA then benefits from the same OMIM-derived phenotype associations that drive
-HiPhive's retrieval performance — while contributing an embedding similarity that
-captures ontology structure beyond Resnik IC scores.
+The critical factor is the evaluation structure: using `max_d BMA(patient_HPs, disease_d_HPs)`
+over per-disease OMIM phenotype sets mirrors how Exomiser uses disease models at inference.
+Genes with no OMIM disease associations fall back to their merged gene phenotype set.
 
 ### INDIGENA as Similarity Replacement in Exomiser
 
