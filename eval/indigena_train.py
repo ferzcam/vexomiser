@@ -124,27 +124,56 @@ def load_mgi_gene_phenotypes(mgi_pheno_csv: str, graph1_entities: set) -> dict:
     return {g: sorted(p) for g, p in mgi_to_phenos.items()}
 
 
-def load_hpo_gene_phenotypes(hpo_g2p_tsv: str, graph1_entities: set) -> dict:
+def load_hpo_gene_phenotypes(hpo_g2p_tsv: str, graph1_entities: set) -> tuple:
     """
-    Load HPO genes_to_phenotype.txt → {gene_symbol: [hp_iri, ...]}
-    filtered to HP terms present in the UPheno graph.
-    Format: ncbi_gene_id <TAB> gene_symbol <TAB> hpo_id <TAB> ...
+    Load HPO genes_to_phenotype.txt.
+    Returns:
+      gene_to_hps   : {gene_symbol: [hp_iri, ...]} filtered to UPheno graph entities
+      gene_to_diseases: {gene_symbol: [disease_id, ...]}  e.g. "OMIM:243400"
+    Format: ncbi_gene_id <TAB> gene_symbol <TAB> hpo_id <TAB> hpo_name <TAB> frequency <TAB> disease_id
     """
     df = pd.read_csv(hpo_g2p_tsv, sep="\t", dtype=str, comment="#")
     gene_to_hps: dict[str, set] = {}
+    gene_to_diseases: dict[str, set] = {}
     for _, row in df.iterrows():
-        symbol = str(row["gene_symbol"]).strip()
-        hp_id  = str(row["hpo_id"]).strip()
+        symbol     = str(row["gene_symbol"]).strip()
+        hp_id      = str(row["hpo_id"]).strip()
+        disease_id = str(row.get("disease_id", "")).strip()
+        if hp_id.startswith("HP:"):
+            iri = hp_iri(hp_id)
+            if iri in graph1_entities:
+                gene_to_hps.setdefault(symbol, set()).add(iri)
+        if disease_id and disease_id != "nan":
+            gene_to_diseases.setdefault(symbol, set()).add(disease_id)
+    n_genes = len(gene_to_hps)
+    n_terms = sum(len(v) for v in gene_to_hps.values())
+    logger.info(f"  HPO gene phenotypes: {n_genes} genes, {n_terms:,} gene-HP pairs, "
+                f"{sum(len(v) for v in gene_to_diseases.values()):,} gene-disease pairs")
+    return ({g: sorted(p) for g, p in gene_to_hps.items()},
+            {g: sorted(ds) for g, ds in gene_to_diseases.items()})
+
+
+def load_omim_disease_phenotypes(pheno_hpoa: str, graph1_entities: set) -> dict:
+    """
+    Load phenotype.hpoa → {disease_id: [hp_iri, ...]} (e.g. "OMIM:243400" → [...]).
+    Filtered to HP terms present in the UPheno graph.
+    """
+    df = pd.read_csv(pheno_hpoa, sep="\t", dtype=str, comment="#")
+    d2hp: dict[str, set] = {}
+    for _, row in df.iterrows():
+        disease_id = str(row.get("database_id", "")).strip()
+        hp_id      = str(row.get("hpo_id", "")).strip()
+        qualifier  = str(row.get("qualifier", "")).strip()
+        if qualifier.upper() == "NOT":
+            continue
         if not hp_id.startswith("HP:"):
             continue
         iri = hp_iri(hp_id)
         if iri not in graph1_entities:
             continue
-        gene_to_hps.setdefault(symbol, set()).add(iri)
-    n_genes = len(gene_to_hps)
-    n_terms = sum(len(v) for v in gene_to_hps.values())
-    logger.info(f"  HPO gene phenotypes: {n_genes} genes, {n_terms:,} gene-HP pairs")
-    return {g: sorted(p) for g, p in gene_to_hps.items()}
+        d2hp.setdefault(disease_id, set()).add(iri)
+    logger.info(f"  OMIM disease phenotypes: {len(d2hp)} diseases loaded from {pheno_hpoa}")
+    return {d: sorted(hps) for d, hps in d2hp.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +260,7 @@ def build_graph(upheno_edges_path: str,
         logger.info(f"  MGI phenotypes loaded for {mgi_covered} genes")
 
     if hpo_gene_phenos_path is not None:
-        hpo_gene_phenos = load_hpo_gene_phenotypes(hpo_gene_phenos_path, graph1_entities)
+        hpo_gene_phenos, _ = load_hpo_gene_phenotypes(hpo_gene_phenos_path, graph1_entities)
         hpo_covered = 0
         for gene, hps in hpo_gene_phenos.items():
             if hps:
@@ -508,6 +537,11 @@ def evaluate(model, test_cases: pd.DataFrame, gene2pheno: dict,
            help="HPO genes_to_phenotype.txt (gene_symbol→hpo_id). "
                 "If given, adds human HP annotations for each gene in Graph 2, "
                 "replacing the training-case HPO fallback for covered genes.")
+@ck.option("--phenotype-hpoa", default=None,
+           help="HPO phenotype.hpoa (disease_id→hpo_id). "
+                "When combined with --hpo-gene-phenotypes, enables per-disease "
+                "evaluation: score(gene) = max_d BMA(patient_HPs, disease_d_HPs), "
+                "mirroring how Exomiser uses OMIM disease models at inference.")
 @ck.option("--track", type=ck.Choice(["1", "2"]), default="1", show_default=True)
 @ck.option("--eval-split", type=ck.Choice(["val", "test"]), default="test", show_default=True,
            help="Split to evaluate on.")
@@ -521,7 +555,7 @@ def evaluate(model, test_cases: pd.DataFrame, gene2pheno: dict,
 @ck.option("--random-seed", type=int, default=0, show_default=True)
 @ck.option("--only-eval", is_flag=True,
            help="Skip training; load existing model checkpoint and evaluate.")
-def main(upheno_edges, mgi_gene_phenotypes, hom_file, hpo_gene_phenotypes,
+def main(upheno_edges, mgi_gene_phenotypes, hom_file, hpo_gene_phenotypes, phenotype_hpoa,
          track, eval_split, graph2, graph3, graph4,
          embedding_dim, batch_size, learning_rate, num_epochs, random_seed, only_eval):
 
@@ -646,9 +680,19 @@ def main(upheno_edges, mgi_gene_phenotypes, hom_file, hpo_gene_phenotypes,
     out_file = os.path.join(RESULTS_DIR, f"{file_id}_{eval_split}.tsv")
     logger.info(f"Evaluating on {eval_split} split ({len(eval_cases)} cases)...")
     model.eval()
-    g2d = build_gene2diseases(train_cases) if (graph3 or graph4) else None
+
+    # Per-disease eval: requires both phenotype.hpoa (full disease→HP) and
+    # genes_to_phenotype.txt (gene→OMIM disease IDs). Falls back to merged
+    # gene2pheno when either is missing.
+    omim_d2hp, gene2omim_diseases = None, None
+    if phenotype_hpoa and hpo_gene_phenotypes:
+        logger.info("Building per-disease eval structures from OMIM data...")
+        _, gene2omim_diseases = load_hpo_gene_phenotypes(hpo_gene_phenotypes, set(triples_factory.entity_to_id.keys()))
+        omim_d2hp = load_omim_disease_phenotypes(phenotype_hpoa, set(triples_factory.entity_to_id.keys()))
+        logger.info(f"  Per-disease eval: {len(omim_d2hp)} diseases, {len(gene2omim_diseases)} genes with disease links")
+
     evaluate(model, eval_cases, gene2pheno, eval_genes, triples_factory, out_file,
-             gene2diseases=g2d, disease2pheno=disease2pheno if (graph3 or graph4) else None)
+             gene2diseases=gene2omim_diseases, disease2pheno=omim_d2hp)
 
     _, macro = compute_metrics(out_file, verbose=False)
     print(f"\n=== INDIGENA — Track {track}  Graph {graph_tag}{mgi_tag}  {eval_split} ===")
