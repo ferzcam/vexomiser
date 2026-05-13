@@ -6,12 +6,12 @@ We integrated INDIGENA's embedding-based BMA as a drop-in replacement for the
 IC-based semantic similarity used by HiPhive, Phive, and PhenIX in Exomiser,
 and evaluated on the PAVS Track 1 benchmark (test split, 518 cases) and Track 2
 (phenotype + variant, test split, 284 cases).
-On Track 1, INDIGENA-HiPhive matches HiPhive (MRR 0.268 vs 0.269) and
-INDIGENA-PhenIX outperforms original PhenIX (MRR 0.268 vs 0.261),
+On Track 1, INDIGENA-HiPhive and INDIGENA-PhenIX match or slightly outperform
+their baselines (MRR 0.262 vs 0.261 and 0.259 respectively),
 while requiring no ontology database at inference time.
 On Track 2, INDIGENA methods consistently improve top-10 and top-100 recall
-over their baselines — INDIGENA-Phive achieves the best MR (9.7) and Hits@10
-(0.940) despite Phive being the weakest phenotype-only baseline.
+over their baselines — INDIGENA-Phive achieves the best MR (9.9) and Hits@10
+(0.937) despite Phive being the weakest phenotype-only baseline.
 
 ---
 
@@ -126,12 +126,12 @@ When INDIGENA embedding BMA replaces the similarity function inside each Exomise
 
 | Method | MR | MRR | Hits@1 | Hits@3 | Hits@10 | Hits@100 | AUC |
 |---|---|---|---|---|---|---|---|
-| HiPhive | 509.7 | 0.269 | 0.228 | 0.280 | 0.344 | 0.492 | 0.775 |
-| INDIGENA-HiPhive | 506.2 | 0.268 | 0.226 | 0.278 | 0.347 | 0.510 | 0.777 |
-| PhenIX | 552.5 | 0.261 | 0.230 | 0.266 | 0.320 | 0.461 | 0.756 |
-| INDIGENA-PhenIX | 503.2 | 0.268 | 0.226 | 0.278 | 0.347 | 0.510 | 0.778 |
-| Phive | 847.2 | 0.026 | 0.010 | 0.025 | 0.048 | 0.193 | 0.626 |
-| INDIGENA-Phive | 886.7 | 0.017 | 0.010 | 0.017 | 0.027 | 0.058 | 0.608 |
+| HiPhive | 501.4 | 0.261 | 0.223 | 0.267 | 0.332 | 0.513 | 0.778 |
+| INDIGENA-HiPhive | 507.0 | 0.262 | 0.226 | 0.269 | 0.321 | 0.506 | 0.776 |
+| PhenIX | 565.5 | 0.259 | 0.225 | 0.268 | 0.317 | 0.486 | 0.750 |
+| INDIGENA-PhenIX | 502.0 | 0.262 | 0.226 | 0.269 | 0.321 | 0.507 | 0.778 |
+| Phive | 832.1 | 0.035 | 0.017 | 0.032 | 0.061 | 0.222 | 0.632 |
+| INDIGENA-Phive | 761.4 | 0.014 | 0.006 | 0.012 | 0.020 | 0.057 | 0.663 |
 
 ### Track 2: Variant + Phenotype (284 cases, 226 genes in pool)
 
@@ -151,11 +151,11 @@ except HiPhive, which uses Exomiser's native `EXOMISER_GENE_COMBINED_SCORE` dire
 | Method | MR | MRR | Hits@1 | Hits@3 | Hits@10 | Hits@100 | AUC |
 |---|---|---|---|---|---|---|---|
 | HiPhive | 20.1 | 0.580 | 0.415 | 0.669 | 0.877 | 0.905 | 0.914 |
-| INDIGENA-HiPhive | 11.9 | 0.468 | 0.271 | 0.479 | 0.926 | 0.951 | 0.951 |
+| INDIGENA-HiPhive | 10.5 | 0.466 | 0.261 | 0.532 | 0.926 | 0.968 | 0.956 |
 | PhenIX | 26.5 | 0.531 | 0.391 | 0.616 | 0.789 | 0.870 | 0.886 |
-| INDIGENA-PhenIX | 24.2 | 0.459 | 0.268 | 0.665 | 0.817 | 0.891 | 0.896 |
+| INDIGENA-PhenIX | 22.9 | 0.453 | 0.257 | 0.669 | 0.813 | 0.901 | 0.902 |
 | Phive | 34.9 | 0.338 | 0.134 | 0.451 | 0.768 | 0.831 | 0.849 |
-| INDIGENA-Phive | 9.7 | 0.405 | 0.144 | 0.465 | 0.940 | 0.972 | 0.961 |
+| INDIGENA-Phive | 9.9 | 0.434 | 0.201 | 0.472 | 0.937 | 0.972 | 0.959 |
 
 ---
 
@@ -195,14 +195,14 @@ lookup and directly compares gene phenotype terms against the patient query.
 pathogenicity scores dramatically improves all methods over Track 1 (MRR jumps from ~0.27
 to ~0.58 for HiPhive). Under the combined scoring scheme, INDIGENA methods trade top-1
 precision for substantially better top-10 and top-100 recall. INDIGENA-Phive is the
-standout: it achieves MR 11.2 and Hits@10 0.937, the best of any method, despite Phive
+standout: it achieves MR 9.9 and Hits@10 0.937, the best of any method, despite Phive
 being the weakest phenotype-only baseline. With variant scores supplying most of the
 signal, INDIGENA's broader phenotype similarity distribution complements rather than
 competes with the sharp variant prior, pushing the causal gene into the top-10 more
 reliably.
 
 **Top-1 precision vs. recall trade-off in Track 2.** INDIGENA methods consistently lower
-Hits@1 relative to their baselines (e.g. INDIGENA-HiPhive 0.271 vs HiPhive 0.415). The
+Hits@1 relative to their baselines (e.g. INDIGENA-HiPhive 0.261 vs HiPhive 0.415). The
 embedding-based similarity distributes scores more broadly across candidate genes, which
 hurts the top-1 rank but improves upper-funnel recall. Whether this trade-off is
 acceptable depends on the clinical use case (ranked shortlist vs. single top candidate).
