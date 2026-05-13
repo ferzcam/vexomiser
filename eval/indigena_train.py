@@ -358,11 +358,27 @@ def compare_bma(all_genes_pheno_vecs: th.Tensor,
 # Evaluation
 # ---------------------------------------------------------------------------
 
+def build_gene2diseases(train_cases: pd.DataFrame) -> dict:
+    """gene_symbol → sorted list of disease IRIs (from training cases)."""
+    g2d: dict[str, set] = {}
+    for _, row in train_cases.iterrows():
+        gene = row["gene_symbol"]
+        if not isinstance(gene, str):
+            continue
+        g2d.setdefault(gene, set()).add(disease_iri(row["disease_id_norm"]))
+    return {g: sorted(ds) for g, ds in g2d.items()}
+
+
 def evaluate(model, test_cases: pd.DataFrame, gene2pheno: dict,
-             eval_genes: list, triples_factory, out_file: str):
+             eval_genes: list, triples_factory, out_file: str,
+             gene2diseases: dict = None, disease2pheno: dict = None):
     """
     Score every test case against all eval_genes and write TSV.
-    Genes without any known phenotype (not in gene2pheno or empty) get score 0.
+
+    When gene2diseases and disease2pheno are provided, uses per-disease scoring
+    (mirrors Exomiser): score(gene) = max_d BMA(patient_HPs, disease_d_HPs).
+    Falls back to merged gene2pheno BMA for genes with no disease coverage.
+    Otherwise uses merged gene2pheno BMA for all genes.
     """
     entity_to_id = triples_factory.entity_to_id
     entity_ids = th.tensor(list(entity_to_id.values()))
@@ -373,22 +389,51 @@ def evaluate(model, test_cases: pd.DataFrame, gene2pheno: dict,
     gene_to_idx = {g: i for i, g in enumerate(eval_genes)}
     n_genes = len(eval_genes)
 
-    # Pre-build padded gene phenotype tensor
+    use_per_disease = gene2diseases is not None and disease2pheno is not None
+
+    if use_per_disease:
+        # Pre-build disease embedding matrix: (n_diseases, max_P, D)
+        all_diseases = sorted(disease2pheno.keys())
+        disease_to_idx = {d: i for i, d in enumerate(all_diseases)}
+        n_diseases = len(all_diseases)
+
+        d_pheno_counts = []
+        for d in all_diseases:
+            phenos = [p for p in disease2pheno[d] if p in entity_to_id]
+            d_pheno_counts.append(len(phenos))
+        max_d_phenos = max(d_pheno_counts) if d_pheno_counts else 1
+
+        all_disease_vecs = th.zeros(n_diseases, max_d_phenos, emb_dim)
+        for i, d in enumerate(all_diseases):
+            phenos = [p for p in disease2pheno[d] if p in entity_to_id]
+            if phenos:
+                ids = th.tensor([entity_to_id[p] for p in phenos])
+                all_disease_vecs[i, :len(phenos), :] = entity_embs[ids]
+        d_pheno_counts_t = th.tensor(d_pheno_counts, dtype=th.float32)
+
+        # gene → indices into all_diseases (only diseases with HP coverage)
+        gene_disease_indices = {}
+        for gene in eval_genes:
+            idxs = [disease_to_idx[d] for d in gene2diseases.get(gene, [])
+                    if d in disease_to_idx]
+            if idxs:
+                gene_disease_indices[gene] = idxs
+        logger.info(f"Per-disease eval: {n_diseases} diseases, "
+                    f"{sum(bool(v) for v in gene_disease_indices.values())} genes covered")
+
+    # Pre-build merged gene phenotype tensor (fallback / non-per-disease path)
     pheno_counts = []
     for gene in eval_genes:
-        phenos = gene2pheno.get(gene, [])
-        phenos = [p for p in phenos if p in entity_to_id]
+        phenos = [p for p in gene2pheno.get(gene, []) if p in entity_to_id]
         pheno_counts.append(len(phenos))
     max_phenos = max(pheno_counts) if pheno_counts else 1
 
     all_gene_vecs = th.zeros(n_genes, max_phenos, emb_dim)
     for i, gene in enumerate(eval_genes):
-        phenos = gene2pheno.get(gene, [])
-        phenos = [p for p in phenos if p in entity_to_id]
+        phenos = [p for p in gene2pheno.get(gene, []) if p in entity_to_id]
         if phenos:
             ids = th.tensor([entity_to_id[p] for p in phenos])
             all_gene_vecs[i, :len(phenos), :] = entity_embs[ids]
-
     pheno_counts_t = th.tensor(pheno_counts, dtype=th.float32)
 
     os.makedirs(os.path.dirname(out_file), exist_ok=True)
@@ -403,14 +448,33 @@ def evaluate(model, test_cases: pd.DataFrame, gene2pheno: dict,
                 continue
 
             gene_idx = gene_to_idx[gene]
+            patient_phenos = [hp_iri(h) for h in row["hpo_list"] if hp_iri(h) in entity_to_id]
 
-            # Disease phenotypes = this case's HPO terms
-            disease_phenos = [hp_iri(h) for h in row["hpo_list"] if hp_iri(h) in entity_to_id]
-            if not disease_phenos:
-                # No known HP terms → write uniform-zero scores (rank = random)
+            if not patient_phenos:
                 scores = [0.0] * n_genes
+            elif use_per_disease:
+                q_vecs = entity_embs[th.tensor([entity_to_id[p] for p in patient_phenos])]
+                with th.no_grad():
+                    # BMA scores for all diseases at once
+                    disease_scores = compare_bma(all_disease_vecs, q_vecs, d_pheno_counts_t)  # (n_diseases,)
+
+                scores = []
+                for g in eval_genes:
+                    idxs = gene_disease_indices.get(g)
+                    if idxs:
+                        scores.append(disease_scores[idxs].max().item())
+                    else:
+                        # fallback: merged gene phenotypes
+                        gi = gene_to_idx[g]
+                        if pheno_counts[gi] > 0:
+                            g_vecs = all_gene_vecs[gi:gi+1]
+                            s = compare_bma(g_vecs, q_vecs,
+                                            pheno_counts_t[gi:gi+1]).item()
+                            scores.append(s)
+                        else:
+                            scores.append(0.0)
             else:
-                d_vecs = entity_embs[th.tensor([entity_to_id[p] for p in disease_phenos])]
+                d_vecs = entity_embs[th.tensor([entity_to_id[p] for p in patient_phenos])]
                 with th.no_grad():
                     scores = compare_bma(all_gene_vecs, d_vecs, pheno_counts_t).tolist()
 
@@ -582,7 +646,9 @@ def main(upheno_edges, mgi_gene_phenotypes, hom_file, hpo_gene_phenotypes,
     out_file = os.path.join(RESULTS_DIR, f"{file_id}_{eval_split}.tsv")
     logger.info(f"Evaluating on {eval_split} split ({len(eval_cases)} cases)...")
     model.eval()
-    evaluate(model, eval_cases, gene2pheno, eval_genes, triples_factory, out_file)
+    g2d = build_gene2diseases(train_cases) if (graph3 or graph4) else None
+    evaluate(model, eval_cases, gene2pheno, eval_genes, triples_factory, out_file,
+             gene2diseases=g2d, disease2pheno=disease2pheno if (graph3 or graph4) else None)
 
     _, macro = compute_metrics(out_file, verbose=False)
     print(f"\n=== INDIGENA — Track {track}  Graph {graph_tag}{mgi_tag}  {eval_split} ===")
