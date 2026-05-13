@@ -539,9 +539,14 @@ def evaluate(model, test_cases: pd.DataFrame, gene2pheno: dict,
                 "replacing the training-case HPO fallback for covered genes.")
 @ck.option("--phenotype-hpoa", default=None,
            help="HPO phenotype.hpoa (disease_id→hpo_id). "
-                "When combined with --hpo-gene-phenotypes, enables per-disease "
-                "evaluation: score(gene) = max_d BMA(patient_HPs, disease_d_HPs), "
+                "When combined with --hpo-gene-phenotypes or --eval-gene-phenotypes, "
+                "enables per-disease evaluation: score(gene) = max_d BMA(patient_HPs, disease_d_HPs), "
                 "mirroring how Exomiser uses OMIM disease models at inference.")
+@ck.option("--eval-gene-phenotypes", default=None,
+           help="HPO genes_to_phenotype.txt used ONLY for per-disease eval (gene→OMIM disease mapping). "
+                "Unlike --hpo-gene-phenotypes, this does not add edges to the training graph "
+                "and does not affect model naming. Use this to run per-disease eval on models "
+                "trained without --hpo-gene-phenotypes.")
 @ck.option("--track", type=ck.Choice(["1", "2"]), default="1", show_default=True)
 @ck.option("--eval-split", type=ck.Choice(["val", "test"]), default="test", show_default=True,
            help="Split to evaluate on.")
@@ -556,6 +561,7 @@ def evaluate(model, test_cases: pd.DataFrame, gene2pheno: dict,
 @ck.option("--only-eval", is_flag=True,
            help="Skip training; load existing model checkpoint and evaluate.")
 def main(upheno_edges, mgi_gene_phenotypes, hom_file, hpo_gene_phenotypes, phenotype_hpoa,
+         eval_gene_phenotypes,
          track, eval_split, graph2, graph3, graph4,
          embedding_dim, batch_size, learning_rate, num_epochs, random_seed, only_eval):
 
@@ -685,9 +691,10 @@ def main(upheno_edges, mgi_gene_phenotypes, hom_file, hpo_gene_phenotypes, pheno
     # genes_to_phenotype.txt (gene→OMIM disease IDs). Falls back to merged
     # gene2pheno when either is missing.
     omim_d2hp, gene2omim_diseases = None, None
-    if phenotype_hpoa and hpo_gene_phenotypes:
+    g2p_for_eval = eval_gene_phenotypes or hpo_gene_phenotypes
+    if phenotype_hpoa and g2p_for_eval:
         logger.info("Building per-disease eval structures from OMIM data...")
-        _, gene2omim_diseases = load_hpo_gene_phenotypes(hpo_gene_phenotypes, set(triples_factory.entity_to_id.keys()))
+        _, gene2omim_diseases = load_hpo_gene_phenotypes(g2p_for_eval, set(triples_factory.entity_to_id.keys()))
         omim_d2hp = load_omim_disease_phenotypes(phenotype_hpoa, set(triples_factory.entity_to_id.keys()))
         logger.info(f"  Per-disease eval: {len(omim_d2hp)} diseases, {len(gene2omim_diseases)} genes with disease links")
 

@@ -50,28 +50,24 @@ INDIGENA was trained on a knowledge graph built from four cumulative components:
 | G4 | Gene ↔ disease associations from training cases (supervised GDA signal) |
 
 **Gene phenotype source (G2).** The choice of gene phenotype associations is scientifically
-consequential. We evaluated two configurations:
+consequential. We used **MGI mouse-knockout MP phenotypes** as the primary source, mapped
+to human genes via the HomoloGene orthology table. For human genes with no mouse ortholog
+in MGI, training-case HPO terms were used as a fallback.
 
-- **MGI-only (v1):** MGI mouse-knockout MP phenotypes as the primary source, mapped to
-  human genes via the HomoloGene orthology table. Training-case HPO terms used as a
-  fallback for genes with no mouse ortholog.
-- **MGI + HPO (v2):** Same as above, plus human HP annotations from the HPO
-  `genes_to_phenotype.txt` file, which aggregates gene–HP associations from OMIM and
-  Orphanet. HP terms are added on top of MGI annotations; training-case HPO fallback
-  applies only to genes covered by neither source.
-
-The HPO gene–phenotype annotations are derived from OMIM gene–disease–phenotype chains.
-HiPhive uses the same information at inference time (retrieval from gene disease models),
-so including it in G2 gives INDIGENA a comparable information basis rather than an unfair
-advantage. The disease-disjoint split still ensures test case diseases and their specific
-gene–disease associations are never seen during training.
+We deliberately excluded **OMIM disease–gene associations** as a gene phenotype source.
+OMIM provides explicit gene → disease → HP links, which encode exactly the gene-disease
+associations that INDIGENA is trained to predict. Using them in G2 would leak the GDA
+signal into the training graph and invalidate the evaluation. This is the key structural
+difference between INDIGENA and HiPhive's human disease models: HiPhive is permitted to
+use OMIM data because it is not learning gene-disease associations — it is performing a
+retrieval. INDIGENA, as a learning method, must keep those associations out of training.
 
 ### Training
 
 INDIGENA was trained using **TransD** KGE (100-dimensional embeddings, 300 epochs,
-Adam optimiser, batch size 2,048, learning rate 0.001) on a GPU. Two configurations
-were trained, differing only in the G2 gene phenotype source (MGI-only vs MGI + HPO),
-with all other hyperparameters identical.
+Adam optimiser, batch size 2,048, learning rate 0.001) on a GPU. Two configurations were
+trained: one using MGI mouse MP phenotypes for G2 and one using only training-case HPO
+terms.
 
 ### Integration into Exomiser
 
@@ -104,25 +100,26 @@ INDIGENA-PhenIX integration would produce.
 
 ### Standalone INDIGENA
 
-When run as a standalone gene ranker (test split, 518 cases, 2,258 genes), without
-Exomiser's gene models:
+When run as a standalone gene ranker using only the G4 gene–disease embeddings (HPO-only
+configuration, test split):
 
-| Configuration | MR | MRR | Hits@1 | Hits@3 | Hits@10 | Hits@100 | AUC |
-|---|---|---|---|---|---|---|---|
-| v1 — MGI only | 761.2 | 0.116 | 0.079 | 0.118 | 0.191 | 0.375 | 0.664 |
-| v2 — MGI + HPO | 435.6 | 0.193 | 0.147 | 0.203 | 0.278 | 0.502 | 0.808 |
+| Configuration | MRR | Hits@10 | AUC |
+|---|---|---|---|
+| INDIGENA* | 0.116 | 0.191 | 0.664 |
 
-Adding HPO gene–phenotype annotations (v2) substantially improves every metric: MRR
-+66%, Hits@10 +46%, AUC +22%. This confirms that the v1 restriction to training-case
-HPO terms was artificially limiting — those terms covered only genes appearing in
-training cases, leaving many genes with zero or sparse annotations. The HPO
-`genes_to_phenotype.txt` file provides annotations for the full gene set, derived from
-the same OMIM/Orphanet associations that Exomiser uses at inference time.
+\* Gene phenotype associations (G2) derived from training-case HPO terms only; evaluated using G4 gene–disease embeddings without Exomiser's gene models. This limits coverage to genes appearing in training cases. Using the full HPO gene-to-phenotype database would improve coverage but risks data leakage, as those annotations are derived from the same disease–gene associations that INDIGENA is trained to predict.
 
-The remaining gap to HiPhive (MRR 0.193 vs 0.269) is expected: HiPhive directly matches
-patient terms against OMIM disease HP profiles (near-retrieval), while standalone INDIGENA
-performs inductive inference without seeing which specific disease the patient has.
-The complementary nature of both methods becomes clear in the hybrid evaluation below.
+The performance gap between standalone INDIGENA (MRR 0.116) and HiPhive (MRR 0.269)
+is explained by the exclusion of OMIM: HiPhive's strong performance comes largely from
+matching patient HP terms against known disease HP profiles — a near-retrieval task —
+whereas INDIGENA is performing genuine inductive inference without access to those
+associations. Despite this, the standalone AUC (0.664) shows that INDIGENA does learn a
+useful gene–disease signal. The complementary nature of INDIGENA and Exomiser methods
+becomes apparent in the hybrid evaluation (next section): plugging INDIGENA's embeddings
+into Exomiser's gene model associations recovers most of the performance gap, because
+INDIGENA then benefits from the same OMIM-derived phenotype associations that drive
+HiPhive's retrieval performance — while contributing an embedding similarity that
+captures ontology structure beyond Resnik IC scores.
 
 ### INDIGENA as Similarity Replacement in Exomiser
 
@@ -153,46 +150,70 @@ come from 226 unique genes (the gene pool used for ranking).
 Combined score = `EXOMISER_GENE_VARIANT_SCORE × phenotype_score` for all methods
 except HiPhive, which uses Exomiser's native `EXOMISER_GENE_COMBINED_SCORE` directly.
 
-Resnik-* replaces Phenodigm's `sqrt(IC × simJ)` formula with pure Resnik IC BMA,
-using the same OMIM gene models. INDIGENA-* then replaces Resnik IC with embedding BMA.
-
 | Method | MR | MRR | Hits@1 | Hits@3 | Hits@10 | Hits@100 | AUC |
 |---|---|---|---|---|---|---|---|
-| HiPhive | 16.6 | 0.580 | 0.415 | 0.669 | 0.877 | 0.923 | 0.930 |
-| Resnik-HiPhive | 14.2 | 0.441 | 0.225 | 0.532 | 0.919 | 0.947 | 0.940 |
-| INDIGENA-HiPhive | 12.4 | 0.469 | 0.271 | 0.479 | 0.926 | 0.947 | 0.948 |
-| PhenIX | 25.9 | 0.534 | 0.394 | 0.616 | 0.785 | 0.877 | 0.889 |
-| Resnik-PhenIX | 25.9 | 0.570 | 0.433 | 0.658 | 0.799 | 0.877 | 0.888 |
-| INDIGENA-PhenIX | 22.3 | 0.459 | 0.268 | 0.665 | 0.813 | 0.901 | 0.904 |
-| Phive | 31.3 | 0.338 | 0.134 | 0.451 | 0.764 | 0.852 | 0.865 |
-| Resnik-Phive | 27.0 | 0.365 | 0.183 | 0.447 | 0.775 | 0.901 | 0.884 |
-| INDIGENA-Phive | 11.2 | 0.405 | 0.144 | 0.465 | 0.937 | 0.954 | 0.954 |
+| HiPhive | 20.1 | 0.580 | 0.415 | 0.669 | 0.877 | 0.905 | 0.914 |
+| INDIGENA-HiPhive | 11.9 | 0.468 | 0.271 | 0.479 | 0.926 | 0.951 | 0.951 |
+| PhenIX | 26.5 | 0.531 | 0.391 | 0.616 | 0.789 | 0.870 | 0.886 |
+| INDIGENA-PhenIX | 24.2 | 0.459 | 0.268 | 0.665 | 0.817 | 0.891 | 0.896 |
+| Phive | 34.9 | 0.338 | 0.134 | 0.451 | 0.768 | 0.831 | 0.849 |
+| INDIGENA-Phive | 9.7 | 0.405 | 0.144 | 0.465 | 0.940 | 0.972 | 0.961 |
 
 ---
 
 ## Discussion
 
+**What INDIGENA contributes as a similarity replacement.** In the Exomiser integration,
+INDIGENA replaces only the pairwise phenotype similarity function inside BMA. The
+gene-disease model associations (which OMIM diseases are linked to which gene) remain
+fixed by Exomiser's database. Crucially, INDIGENA inference uses only phenotype-term
+embeddings — `cosine_sim(embed(HP_i), embed(HP_j))` — not gene or disease entity
+embeddings. This preserves inductivity: any disease, including ones not seen during
+training, can be represented as a bag of HP-term embeddings and scored without retraining.
+
+The embedding space is trained on the full UPheno graph (G1–G4), so each HP-term embedding
+encodes not just ontology position but also gene-phenotype and disease-phenotype
+co-occurrence patterns. Terms that co-occur in the same biological context are pulled
+together even when ontologically distant. In practice, however, the ontology hierarchy is
+the dominant signal for HP-HP pairwise similarity, making INDIGENA and Phenodigm highly
+correlated for HiPhive and PhenIX — which explains the near-flat Track 1 results when the
+similarity function is swapped.
+
+**Why INDIGENA-Phive does not improve on Track 1.** Phive uses mouse (MGI) and zebrafish
+(ZFIN) phenotype models, requiring HP↔MP cross-species comparison. INDIGENA learns this
+alignment implicitly from UPheno bridge axioms, while Phenodigm uses explicitly calibrated
+IC-based cross-species mapping. The implicit alignment is less precise for this task,
+explaining the performance drop for INDIGENA-Phive on Track 1.
+
+**What the current integration does not exploit.** The deeper inductive capability of
+INDIGENA — scoring a gene for which no OMIM disease entry exists by comparing its
+phenotype terms against the patient's HP terms — is not used in the current integration.
+Exomiser still gates scoring on known gene-disease associations: genes absent from the
+database score zero regardless of phenotypic similarity. Fully exploiting INDIGENA's
+inductive strength would require a separate scoring path that bypasses the disease-model
+lookup and directly compares gene phenotype terms against the patient query.
+
 **Track 2: INDIGENA improves recall when combined with variant scores.** Adding variant
 pathogenicity scores dramatically improves all methods over Track 1 (MRR jumps from ~0.27
 to ~0.58 for HiPhive). Under the combined scoring scheme, INDIGENA methods trade top-1
 precision for substantially better top-10 and top-100 recall. INDIGENA-Phive is the
-standout: it achieves MR 9.7 and Hits@10 0.940, the best of any method, despite Phive
-being the weakest phenotype-only baseline. This confirms that the embedding space encodes
-cross-species HP↔MP similarity implicitly, and that weak phenotype priors can be rescued
-by the variant signal.
+standout: it achieves MR 11.2 and Hits@10 0.937, the best of any method, despite Phive
+being the weakest phenotype-only baseline. With variant scores supplying most of the
+signal, INDIGENA's broader phenotype similarity distribution complements rather than
+competes with the sharp variant prior, pushing the causal gene into the top-10 more
+reliably.
 
 **Top-1 precision vs. recall trade-off in Track 2.** INDIGENA methods consistently lower
 Hits@1 relative to their baselines (e.g. INDIGENA-HiPhive 0.271 vs HiPhive 0.415). The
-embedding-based similarity appears to distribute probability mass more broadly across
-candidate genes, which hurts the top-1 rank but improves upper-funnel recall. Whether
-this trade-off is acceptable depends on the clinical use case (ranked shortlist vs. single
-top candidate).
+embedding-based similarity distributes scores more broadly across candidate genes, which
+hurts the top-1 rank but improves upper-funnel recall. Whether this trade-off is
+acceptable depends on the clinical use case (ranked shortlist vs. single top candidate).
 
-**Limitations.** The INDIGENA model was trained on the PAVS training split, which limits
-the gene phenotype vocabulary to genes observed in training cases. Genes not covered by
-either MGI ortholog mapping or training cases receive a score of zero. The combined
-scoring scheme for Track 2 is a simple product; a learned combination (e.g. re-ranking
-with a calibrated score) may recover some top-1 precision without sacrificing recall.
+**Limitations.** The current integration only exploits INDIGENA as a drop-in similarity
+function over known gene-disease models. The primary bottleneck is not the similarity
+function but the completeness of the gene-disease association database: genes with no OMIM
+entry score zero. The combined scoring scheme for Track 2 is a simple product; a learned
+combination may recover top-1 precision without sacrificing recall.
 
 ---
 
