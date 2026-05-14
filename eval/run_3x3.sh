@@ -19,8 +19,8 @@ SCRIPT=eval/indigena_train.py
 UPHENO=~/Git/indigena/data/upheno_owl2vecstar_edges.tsv
 MGI_CSV=~/Git/indigena/data/gene_phenotypes.csv
 HOM=~/Git/indigena/data/HOM_MouseHumanSequence.rpt
-HPO_G2P=~/data/hpo/genes_to_phenotype.txt
-PHENO_HPOA=~/data/hpo/phenotype.hpoa
+HPO_G2P=~/Git/vexomiser/data/genes_to_phenotype.txt
+PHENO_HPOA=~/Git/vexomiser/data/phenotype.hpoa
 
 COMMON="--upheno-edges $UPHENO
         --hom-file $HOM
