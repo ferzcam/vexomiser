@@ -363,7 +363,9 @@ def emit(f, text):
                 "Defaults to data/results/track2_jobs/")
 @ck.option("--skip-cli", is_flag=True, default=False,
            help="Skip Exomiser CLI phase and reuse existing TSV files in --work-dir.")
-def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir, skip_cli):
+@ck.option("--tag", default="", show_default=True,
+           help="Optional tag appended to output filenames, e.g. 'mgi_only' or 'hp_only'.")
+def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir, skip_cli, tag):
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
     import glob as _glob
@@ -390,6 +392,7 @@ def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir, sk
     phenopacket_dir = os.path.join(DATA_DIR, "pavs", "phenopackets")
 
     split_tag = f"_{split}" if split != "all" else ""
+    tag_suffix = f"_{tag}" if tag else ""
 
     # ------------------------------------------------------------------
     # Phase 1: run Exomiser CLI in parallel (or reuse existing results)
@@ -432,7 +435,7 @@ def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir, sk
     # ------------------------------------------------------------------
     # Phase 2: collect variant/combined scores; write hiphive output
     # ------------------------------------------------------------------
-    hiphive_out = os.path.join(RESULTS_DIR, f"exomiser_hiphive_track2{split_tag}.tsv")
+    hiphive_out = os.path.join(RESULTS_DIR, f"exomiser_hiphive_track2{split_tag}{tag_suffix}.tsv")
     variant_scores = {}  # case_id -> {gene_symbol: variant_score}
 
     with open(hiphive_out, "w") as f:
@@ -470,7 +473,7 @@ def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir, sk
 
     for pname, prioritiser in prioritisers.items():
         pheno = score_pheno(prioritiser, cases, eval_genes, gene_entrez, desc=pname)
-        out_path = os.path.join(RESULTS_DIR, f"exomiser_{pname}_track2{split_tag}.tsv")
+        out_path = os.path.join(RESULTS_DIR, f"exomiser_{pname}_track2{split_tag}{tag_suffix}.tsv")
         output_paths[pname] = out_path
         with open(out_path, "w") as f:
             for _, row in cases.iterrows():

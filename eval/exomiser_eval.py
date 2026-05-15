@@ -269,7 +269,9 @@ def emit(summary_f, text):
 @ck.option("--embeddings", default=None,
            help="Path to INDIGENA embeddings TSV (from eval/export_embeddings.py). "
                 "When supplied, also runs indigena_hiphive / indigena_phive / indigena_phenix.")
-def main(phenotype_data_dir, track, split, embeddings):
+@ck.option("--tag", default="", show_default=True,
+           help="Optional tag appended to output filenames, e.g. 'mgi_only' or 'hp_only'.")
+def main(phenotype_data_dir, track, split, embeddings, tag):
     track = int(track)
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
@@ -339,14 +341,15 @@ def main(phenotype_data_dir, track, split, embeddings):
         prioritisers = {k: v for k, v in prioritisers.items() if k in subset}
 
     split_tag = f"_{split}" if split != "all" else ""
-    summary_path = os.path.join(RESULTS_DIR, f"exomiser_track{track}{split_tag}_summary.txt")
+    tag_suffix = f"_{tag}" if tag else ""
+    summary_path = os.path.join(RESULTS_DIR, f"exomiser_track{track}{split_tag}{tag_suffix}_summary.txt")
     with open(summary_path, "w") as summary_f:
         emit(summary_f, f"# Exomiser evaluation — Track {track}  split: {split}")
         emit(summary_f, f"# Cases: {len(cases)}  |  Genes: {len(eval_genes)}")
         emit(summary_f, "")
 
         for pname, prioritiser in prioritisers.items():
-            out_file = os.path.join(RESULTS_DIR, f"exomiser_{pname}_track{track}{split_tag}.tsv")
+            out_file = os.path.join(RESULTS_DIR, f"exomiser_{pname}_track{track}{split_tag}{tag_suffix}.tsv")
             logger.info(f"Running {pname}...")
             run_prioritiser(pname, prioritiser, cases, eval_genes,
                             gene_to_index, java_genes, entrez_to_eval_idx,
