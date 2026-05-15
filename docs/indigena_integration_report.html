@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vexomiser — INDIGENA Integration Report</title>
+  <title>Vexomiser: INDIGENA Integration Report</title>
   <style>
     body { font-family: Georgia, serif; max-width: 900px; margin: 40px auto; padding: 0 24px 60px; color: #222; line-height: 1.65; }
     h1 { font-size: 2em; border-bottom: 2px solid #333; padding-bottom: 8px; }
@@ -30,14 +30,12 @@
 
 <h2>Summary</h2>
 
-<p>We integrated INDIGENA's embedding-based BMA as a drop-in replacement for the IC-based
-semantic similarity used by HiPhive, Phive, and PhenIX in Exomiser, and evaluated on the
-PAVS Track 1 benchmark (test split, 518 cases) and Track 2 (phenotype + variant, test split,
-284 cases). On Track 1, INDIGENA-HiPhive and INDIGENA-PhenIX match or slightly outperform
-their baselines (MRR 0.262 vs 0.261 and 0.259 respectively), while requiring no ontology
-database at inference time. On Track 2, INDIGENA methods consistently improve top-10 and
-top-100 recall over their baselines — INDIGENA-Phive achieves the best MR (9.9) and
-Hits@10 (0.937) despite Phive being the weakest phenotype-only baseline.</p>
+<p>We replaced the IC-based similarity in Exomiser's HiPhive, Phive, and PhenIX with INDIGENA's
+embedding-based BMA, and evaluated three training configs (MGI-only, HP-only, MGI+HP) on PAVS
+Track 1 (518 test cases) and Track 2 (284 test cases, phenotype + variant). On Track 1,
+INDIGENA variants perform on par with their baselines; HP-only is the strongest config.
+On Track 2, all configs improve MR, Hits@10, Hits@100, and AUC; INDIGENA-Phive (MGI-only)
+achieves the best MR (9.9), Hits@10 (0.937), Hits@100 (0.972), and AUC (0.959).</p>
 
 <hr />
 
@@ -53,15 +51,11 @@ prioritiser; gene-phenotype model associations (OMIM, MGI, ZFIN) remain unchange
 
 <h3>Benchmark and Evaluation Setup</h3>
 
-<p>We used the <strong>PAVS</strong> (Phenotype-Associated Variant Scoring) benchmark, Track 1
-(5,076 cases, phenotype-only gene ranking). Cases were split into train / val / test (80/10/10)
-using a <strong>disease-disjoint</strong> strategy: all cases sharing the same MONDO disease ID are
-assigned to the same partition, preventing a disease seen in training from appearing in
-evaluation. The split was stratified by cohort (Saudi, DDD, Mixed): each cohort's diseases were
-independently shuffled and distributed 80/10/10, so all three populations are represented
-proportionally in every partition. The gene pool was fixed to all 2,258 unique genes across the
-full dataset so rankings are directly comparable across methods. All INDIGENA results are
-reported on the test split (518 cases) only.</p>
+<p>We used the <strong>PAVS</strong> benchmark, Track 1 (5,076 cases, phenotype-only gene ranking). Cases
+were split train/val/test (80/10/10) using a <strong>disease-disjoint</strong> strategy (all cases sharing
+the same MONDO disease ID go to the same partition), stratified by cohort (Saudi, DDD, Mixed).
+The gene pool was fixed to all 2,258 unique genes across the full dataset. All results are
+reported on the test split (518 cases).</p>
 
 <h3>Graph Construction</h3>
 
@@ -70,25 +64,21 @@ reported on the test split (518 cases) only.</p>
 <table>
   <thead><tr><th>Layer</th><th>Content</th></tr></thead>
   <tbody>
-    <tr><td>G1</td><td>UPheno OWL2Vec* projection — 771K triples covering HP, MP, and UPHENO bridging axioms</td></tr>
+    <tr><td>G1</td><td>UPheno OWL2Vec* projection: 771K triples covering HP, MP, and UPHENO bridging axioms</td></tr>
     <tr><td>G2</td><td>Gene → phenotype associations (see below)</td></tr>
     <tr><td>G3</td><td>Disease → HP associations from training cases only; test/val diseases excluded to preserve inductiveness</td></tr>
     <tr><td>G4</td><td>Gene ↔ disease associations from training cases (supervised GDA signal)</td></tr>
   </tbody>
 </table>
 
-<p><strong>Gene phenotype source (G2).</strong> The choice of gene phenotype associations is scientifically
-consequential. We used <strong>MGI mouse-knockout MP phenotypes</strong> as the primary source, mapped to
-human genes via the HomoloGene orthology table. For human genes with no mouse ortholog in MGI,
-training-case HPO terms were used as a fallback.</p>
-
-<p>We deliberately excluded <strong>OMIM disease–gene associations</strong> as a gene phenotype source.
-OMIM provides explicit gene → disease → HP links, which encode exactly the gene-disease
-associations that INDIGENA is trained to predict. Using them in G2 would leak the GDA signal
-into the training graph and invalidate the evaluation. This is the key structural difference
-between INDIGENA and HiPhive's human disease models: HiPhive is permitted to use OMIM data
-because it is not learning gene-disease associations — it is performing a retrieval. INDIGENA,
-as a learning method, must keep those associations out of training.</p>
+<p><strong>Gene phenotype source (G2).</strong> We trained three configurations differing only in G2:
+(1) <strong>MGI-only</strong>: MGI mouse-knockout MP phenotypes mapped to human genes via HomoloGene;
+genes with no mouse ortholog receive no G2 entry;
+(2) <strong>HP-only</strong>: training-case HPO annotations per gene; only genes appearing in training
+cases receive a G2 entry;
+(3) <strong>MGI+HP</strong>: MGI MP primary with training-case HPO additive.
+In all three configs, OMIM disease–gene associations are excluded from G2: they encode the same
+GDA signal supervised in G4, and including them would leak the training target.</p>
 
 <h3>Training</h3>
 
@@ -104,20 +94,12 @@ the prioritiser classes. Both <code>HiPhivePriority</code> and <code>PhivePriori
 factory at construction time, defaulting to the original Phenodigm behaviour.</p>
 
 <p><code>IndigenaModelScorerFactory</code> implements this interface: given a patient's HP terms and a gene
-model's phenotype terms (HP or MP), it computes the INDIGENA BMA score using pre-exported entity
-embedding vectors. Because the UPheno embedding space covers both HP and MP terms, no separate
-cross-species mapping step is required — the embedding space handles it implicitly. Future neural
-similarity methods (e.g. Multihop-GDA) can be added by implementing the same interface without
-modifying the prioritisers.</p>
+model's phenotype terms (HP or MP), it computes the INDIGENA BMA score from pre-exported
+embedding vectors.</p>
 
-<p>PhenIX uses a separate Ontologizer-based IC similarity implementation (<code>PhenixPriority</code>) that is
-architecturally independent of HiPhive and does not expose a pluggable similarity factory. There
-is therefore no direct way to substitute the similarity function inside PhenIX. As an
-approximation, we configured HiPhivePriority with <code>runParams("human")</code>, which restricts scoring
-to human disease models only (HP-only, no cross-species lookup, no PPI network) — the same scope
-as PhenIX — and replaced its similarity computation with the INDIGENA BMA scorer. This yields
-INDIGENA-PhenIX as a functionally comparable but architecturally distinct approximation of what a
-native INDIGENA-PhenIX integration would produce.</p>
+<p><code>PhenixPriority</code> does not expose a pluggable similarity factory. As an approximation,
+INDIGENA-PhenIX uses <code>HiPhivePriority</code> with <code>runParams("human")</code> (human disease models only,
+no cross-species lookup, no PPI) with the INDIGENA BMA scorer substituted.</p>
 
 <hr />
 
@@ -159,22 +141,12 @@ lr 0.001).</p>
 
 <h4>Evaluation modes: per-disease vs. merged</h4>
 
-<p>At inference, a patient is represented as a set of HP terms. Each candidate gene must be scored
-against those terms. The key question is how a gene's phenotype profile is constructed for the
-comparison.</p>
-
-<p><strong>Merged (mg) evaluation</strong> treats a gene as a single unified bag of phenotype terms — either
-its MGI mouse-knockout MP terms, or the union of all HP terms across every OMIM disease
-associated with that gene. BMA is computed once:
+<p><strong>Merged (mg)</strong> treats each gene as a single bag of phenotype terms:
 <code>score(gene) = BMA(patient_HPs, gene_phenos)</code>.</p>
-
-<p><strong>Per-disease (pd) evaluation</strong> stratifies by OMIM disease entry. Each gene may be linked to
-multiple OMIM diseases, each with its own HP phenotype profile. The gene score is the maximum
-BMA over all its disease entries:
+<p><strong>Per-disease (pd)</strong> scores each gene–disease model separately and takes the maximum:
 <code>score(gene) = max_d BMA(patient_HPs, disease_d_HPs)</code>.
-This mirrors Exomiser's HiPhive, which scores each gene–disease model independently and takes
-the best match. MGI phenotypes are always merged (one knockout profile per gene), so the
-per-disease distinction applies only to the HP component.</p>
+This mirrors Exomiser's behaviour. The distinction applies only to the HP component; MGI
+phenotypes are always merged.</p>
 
 <p>The five eval modes are:</p>
 
@@ -216,34 +188,22 @@ per-disease distinction applies only to the HP component.</p>
   </tbody>
 </table>
 
-<p>Per-disease evaluation consistently outperforms merged for the HP component (e.g. eval_hp_pd
-0.281 vs eval_hp_mg 0.256 for MGI+HP training). Merging all disease HP sets creates a noisy bag
-blending phenotypes from unrelated diseases; per-disease scoring lets the best-matching disease
-profile dominate.</p>
-
-<p><code>eval_mgi</code> scores are very low (~0.054–0.058) regardless of training config. Comparing patient
-HP embeddings directly against gene MP embeddings requires cross-species alignment; the implicit
-alignment learned from UPheno bridge axioms is insufficient for this task.</p>
-
-<p>Combining MGI and HP at eval time (<code>eval_mgi_hp_mg</code>, <code>eval_mgi_hp_pd</code>) consistently hurts
-relative to HP-alone — MP terms introduce cross-species noise that dilutes the HP signal.</p>
-
-<p>HP-only and MGI+HP training are effectively tied on the best eval modes (eval_hp_pd MRR 0.281
-for both), suggesting MGI phenotypes in G2 contribute no additional signal beyond training-case
-HP annotations for HP-based inference.</p>
+<p>Per-disease HP outperforms merged (e.g. <code>eval_hp_pd</code> 0.281 vs <code>eval_hp_mg</code> 0.256 for MGI+HP).
+<code>eval_mgi</code> scores are very low (~0.054) across all configs. Combining MGI and HP at eval time
+(<code>eval_mgi_hp_*</code>) consistently hurts relative to HP-only. HP-only and MGI+HP training are tied
+on the best eval mode (<code>eval_hp_pd</code> MRR 0.281 for both).</p>
 
 <h3>INDIGENA as Similarity Replacement in Exomiser (Track 1)</h3>
 
-<p>When INDIGENA embedding BMA replaces the similarity function inside each Exomiser method —
-keeping the same gene model associations — the picture changes substantially. For reference,
-standalone INDIGENA results (best eval mode: <code>eval_hp_pd</code>) are included first.</p>
+<p>Standalone INDIGENA results (best eval mode: <code>eval_hp_pd</code>) are shown for reference, followed
+by Exomiser methods with the original and INDIGENA similarity functions.</p>
 
 <table>
   <thead>
     <tr><th>Method / Training</th><th>Eval mode</th><th>MR</th><th>MRR</th><th>Hits@1</th><th>Hits@3</th><th>Hits@10</th><th>Hits@100</th><th>AUC</th></tr>
   </thead>
   <tbody>
-    <tr style="background:#f9f9e8"><td colspan="9"><em>Standalone INDIGENA — merged gene phenotypes</em></td></tr>
+    <tr style="background:#f9f9e8"><td colspan="9"><em>Standalone INDIGENA: merged gene phenotypes</em></td></tr>
     <tr><td>MGI-only</td><td>eval_mgi</td><td>687.8</td><td>0.054</td><td>0.021</td><td>0.052</td><td>0.104</td><td>0.338</td><td>0.696</td></tr>
     <tr><td>MGI-only</td><td>eval_hp_mg</td><td>399.0</td><td>0.257</td><td>0.210</td><td>0.272</td><td>0.344</td><td>0.537</td><td>0.824</td></tr>
     <tr><td>MGI-only</td><td>eval_mgi_hp_mg</td><td>456.6</td><td>0.208</td><td>0.158</td><td>0.228</td><td>0.295</td><td>0.486</td><td>0.799</td></tr>
@@ -251,49 +211,59 @@ standalone INDIGENA results (best eval mode: <code>eval_hp_pd</code>) are includ
     <tr><td>MGI+HP</td><td>eval_mgi</td><td>580.2</td><td>0.058</td><td>0.023</td><td>0.056</td><td>0.112</td><td>0.392</td><td>0.744</td></tr>
     <tr><td>MGI+HP</td><td>eval_hp_mg</td><td>396.2</td><td>0.253</td><td>0.201</td><td>0.266</td><td>0.353</td><td>0.544</td><td>0.826</td></tr>
     <tr><td>MGI+HP</td><td>eval_mgi_hp_mg</td><td>427.7</td><td>0.198</td><td>0.145</td><td>0.214</td><td>0.290</td><td>0.519</td><td>0.812</td></tr>
-    <tr style="background:#f9f9e8"><td colspan="9"><em>Standalone INDIGENA — per-disease HP</em></td></tr>
+    <tr style="background:#f9f9e8"><td colspan="9"><em>Standalone INDIGENA: per-disease HP</em></td></tr>
     <tr><td>MGI-only</td><td>eval_hp_pd</td><td>401.5</td><td>0.275</td><td>0.236</td><td>0.276</td><td>0.336</td><td>0.544</td><td>0.823</td></tr>
     <tr><td>MGI-only</td><td>eval_mgi_hp_pd</td><td>490.9</td><td>0.177</td><td>0.133</td><td>0.185</td><td>0.255</td><td>0.456</td><td>0.784</td></tr>
     <tr><td>HP-only</td><td>eval_hp_pd</td><td>389.1</td><td>0.281</td><td>0.237</td><td>0.288</td><td>0.357</td><td>0.564</td><td>0.829</td></tr>
     <tr><td>MGI+HP</td><td>eval_hp_pd</td><td>392.1</td><td>0.281</td><td>0.239</td><td>0.288</td><td>0.353</td><td>0.556</td><td>0.827</td></tr>
     <tr><td>MGI+HP</td><td>eval_mgi_hp_pd</td><td>449.9</td><td>0.180</td><td>0.133</td><td>0.197</td><td>0.251</td><td>0.490</td><td>0.802</td></tr>
-    <tr style="background:#f9f9e8"><td colspan="9"><em>Exomiser baselines</em></td></tr>
-    <tr><td>HiPhive</td><td>—</td><td>501.4</td><td>0.261</td><td>0.223</td><td>0.267</td><td>0.332</td><td>0.513</td><td>0.778</td></tr>
-    <tr><td>PhenIX</td><td>—</td><td>565.5</td><td>0.259</td><td>0.225</td><td>0.268</td><td>0.317</td><td>0.486</td><td>0.750</td></tr>
-    <tr><td>Phive</td><td>—</td><td>832.1</td><td>0.035</td><td>0.017</td><td>0.032</td><td>0.061</td><td>0.222</td><td>0.632</td></tr>
-    <tr style="background:#f9f9e8"><td colspan="9"><em>INDIGENA as similarity replacement in Exomiser</em></td></tr>
-    <tr><td>INDIGENA-HiPhive</td><td>—</td><td>507.0</td><td>0.262</td><td>0.226</td><td>0.269</td><td>0.321</td><td>0.506</td><td>0.776</td></tr>
-    <tr><td>INDIGENA-PhenIX</td><td>—</td><td>502.0</td><td>0.262</td><td>0.226</td><td>0.269</td><td>0.321</td><td>0.507</td><td>0.778</td></tr>
-    <tr><td>INDIGENA-Phive</td><td>—</td><td>761.4</td><td>0.014</td><td>0.006</td><td>0.012</td><td>0.020</td><td>0.057</td><td>0.663</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="9"><em>HiPhive</em></td></tr>
+    <tr><td>Exomiser HiPhive</td><td>—</td><td>505.7</td><td>0.274</td><td>0.239</td><td>0.276</td><td>0.351</td><td>0.492</td><td>0.777</td></tr>
+    <tr><td>INDIGENA-HiPhive (MGI-only)</td><td>—</td><td>514.1</td><td>0.266</td><td>0.230</td><td>0.270</td><td>0.324</td><td>0.494</td><td>0.773</td></tr>
+    <tr><td>INDIGENA-HiPhive (HP-only)</td><td>—</td><td>503.1</td><td>0.269</td><td>0.228</td><td>0.280</td><td>0.338</td><td>0.517</td><td>0.778</td></tr>
+    <tr><td>INDIGENA-HiPhive (MGI+HP)</td><td>—</td><td>610.1</td><td>0.261</td><td>0.228</td><td>0.263</td><td>0.326</td><td>0.450</td><td>0.731</td></tr>
+    <tr><td colspan="9" style="background:#f9f9e8"><em>PhenIX</em></td></tr>
+    <tr><td>Exomiser PhenIX</td><td>—</td><td>550.9</td><td>0.259</td><td>0.224</td><td>0.266</td><td>0.324</td><td>0.479</td><td>0.757</td></tr>
+    <tr><td>INDIGENA-PhenIX (MGI-only)</td><td>—</td><td>511.1</td><td>0.265</td><td>0.230</td><td>0.270</td><td>0.324</td><td>0.494</td><td>0.775</td></tr>
+    <tr><td>INDIGENA-PhenIX (HP-only)</td><td>—</td><td>495.5</td><td>0.272</td><td>0.232</td><td>0.282</td><td>0.340</td><td>0.517</td><td>0.782</td></tr>
+    <tr><td>INDIGENA-PhenIX (MGI+HP)</td><td>—</td><td>606.9</td><td>0.265</td><td>0.232</td><td>0.264</td><td>0.336</td><td>0.452</td><td>0.732</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="9"><em>Phive</em></td></tr>
+    <tr><td>Exomiser Phive</td><td>—</td><td>860.9</td><td>0.025</td><td>0.010</td><td>0.021</td><td>0.046</td><td>0.193</td><td>0.620</td></tr>
+    <tr><td>INDIGENA-Phive (MGI-only)</td><td>—</td><td>812.4</td><td>0.017</td><td>0.008</td><td>0.019</td><td>0.023</td><td>0.056</td><td>0.641</td></tr>
+    <tr><td>INDIGENA-Phive (HP-only)</td><td>—</td><td>889.8</td><td>0.015</td><td>0.008</td><td>0.014</td><td>0.023</td><td>0.056</td><td>0.607</td></tr>
+    <tr><td>INDIGENA-Phive (MGI+HP)</td><td>—</td><td>1101.3</td><td>0.005</td><td>0.000</td><td>0.004</td><td>0.010</td><td>0.039</td><td>0.513</td></tr>
   </tbody>
 </table>
 
 <h3>Track 2: Variant + Phenotype (284 cases, 226 genes in pool)</h3>
 
-<p>Track 2 combines variant pathogenicity scores from Exomiser's full pipeline (gnomAD MAF filter
-+ REVEL/MVP pathogenicity) with phenotype similarity. Each spiked VCF contains ~94K GIAB HG001
-background variants plus the known causal variant.</p>
-
-<p>Track 2 contains 2,815 cases total. Because INDIGENA was trained on the Track 1 training split,
-only Track 2 cases whose case ID appears in the Track 1 test split can be evaluated without data
-leakage — the remaining 2,531 cases overlap with the training or validation set and were
-excluded. This yields <strong>284 evaluable cases</strong>, whose causal genes come from 226 unique genes
-(the gene pool used for ranking).</p>
-
-<p>Combined score = <code>EXOMISER_GENE_VARIANT_SCORE × phenotype_score</code> for all methods except HiPhive,
-which uses Exomiser's native <code>EXOMISER_GENE_COMBINED_SCORE</code> directly.</p>
+<p>Each case has a spiked VCF (~94K GIAB HG001 background variants + causal variant); variant
+pathogenicity (gnomAD MAF + REVEL/MVP) is combined with phenotype similarity. Of 2,815 Track 2
+cases, only the 284 whose case ID appears in the Track 1 test split can be evaluated without
+data leakage (226 unique causal genes). Combined score =
+<code>EXOMISER_GENE_VARIANT_SCORE × phenotype_score</code>, except HiPhive which uses
+<code>EXOMISER_GENE_COMBINED_SCORE</code> directly.</p>
 
 <table>
   <thead>
-    <tr><th>Method</th><th>MR</th><th>MRR</th><th>Hits@1</th><th>Hits@3</th><th>Hits@10</th><th>Hits@100</th><th>AUC</th></tr>
+    <tr><th>Method / Training</th><th>MR</th><th>MRR</th><th>Hits@1</th><th>Hits@3</th><th>Hits@10</th><th>Hits@100</th><th>AUC</th></tr>
   </thead>
   <tbody>
-    <tr><td>HiPhive</td><td>20.1</td><td>0.580</td><td>0.415</td><td>0.669</td><td>0.877</td><td>0.905</td><td>0.914</td></tr>
-    <tr><td>INDIGENA-HiPhive</td><td>10.5</td><td>0.466</td><td>0.261</td><td>0.532</td><td>0.926</td><td>0.968</td><td>0.956</td></tr>
-    <tr><td>PhenIX</td><td>26.5</td><td>0.531</td><td>0.391</td><td>0.616</td><td>0.789</td><td>0.870</td><td>0.886</td></tr>
-    <tr><td>INDIGENA-PhenIX</td><td>22.9</td><td>0.453</td><td>0.257</td><td>0.669</td><td>0.813</td><td>0.901</td><td>0.902</td></tr>
-    <tr><td>Phive</td><td>34.9</td><td>0.338</td><td>0.134</td><td>0.451</td><td>0.768</td><td>0.831</td><td>0.849</td></tr>
-    <tr><td>INDIGENA-Phive</td><td>9.9</td><td>0.434</td><td>0.201</td><td>0.472</td><td>0.937</td><td>0.972</td><td>0.959</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="8"><em>HiPhive</em></td></tr>
+    <tr><td>Exomiser HiPhive</td><td>18.2</td><td>0.580</td><td>0.415</td><td>0.669</td><td>0.873</td><td>0.926</td><td>0.922</td></tr>
+    <tr><td>INDIGENA-HiPhive (MGI-only)</td><td>10.5</td><td>0.466</td><td>0.261</td><td>0.532</td><td>0.926</td><td>0.968</td><td>0.956</td></tr>
+    <tr><td>INDIGENA-HiPhive (HP-only)</td><td>10.5</td><td>0.462</td><td>0.257</td><td>0.486</td><td>0.926</td><td>0.968</td><td>0.956</td></tr>
+    <tr><td>INDIGENA-HiPhive (MGI+HP)</td><td>10.6</td><td>0.443</td><td>0.225</td><td>0.479</td><td>0.926</td><td>0.968</td><td>0.956</td></tr>
+    <tr><td colspan="8" style="background:#f9f9e8"><em>PhenIX</em></td></tr>
+    <tr><td>PhenIX</td><td>26.7</td><td>0.536</td><td>0.401</td><td>0.616</td><td>0.782</td><td>0.880</td><td>0.885</td></tr>
+    <tr><td>INDIGENA-PhenIX (MGI-only)</td><td>22.9</td><td>0.453</td><td>0.257</td><td>0.669</td><td>0.813</td><td>0.901</td><td>0.902</td></tr>
+    <tr><td>INDIGENA-PhenIX (HP-only)</td><td>22.9</td><td>0.453</td><td>0.257</td><td>0.665</td><td>0.813</td><td>0.901</td><td>0.902</td></tr>
+    <tr><td>INDIGENA-PhenIX (MGI+HP)</td><td>23.0</td><td>0.435</td><td>0.229</td><td>0.637</td><td>0.813</td><td>0.901</td><td>0.901</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="8"><em>Phive</em></td></tr>
+    <tr><td>Phive</td><td>28.0</td><td>0.339</td><td>0.134</td><td>0.451</td><td>0.768</td><td>0.880</td><td>0.879</td></tr>
+    <tr><td>INDIGENA-Phive (MGI-only)</td><td>9.9</td><td>0.434</td><td>0.201</td><td>0.472</td><td>0.937</td><td>0.972</td><td>0.959</td></tr>
+    <tr><td>INDIGENA-Phive (HP-only)</td><td>9.9</td><td>0.412</td><td>0.162</td><td>0.465</td><td>0.937</td><td>0.972</td><td>0.959</td></tr>
+    <tr><td>INDIGENA-Phive (MGI+HP)</td><td>10.0</td><td>0.395</td><td>0.134</td><td>0.468</td><td>0.937</td><td>0.972</td><td>0.959</td></tr>
   </tbody>
 </table>
 
@@ -301,55 +271,29 @@ which uses Exomiser's native <code>EXOMISER_GENE_COMBINED_SCORE</code> directly.
 
 <h2>Discussion</h2>
 
-<p><strong>What INDIGENA contributes as a similarity replacement.</strong> In the Exomiser integration,
-INDIGENA replaces only the pairwise phenotype similarity function inside BMA. The gene-disease
-model associations (which OMIM diseases are linked to which gene) remain fixed by Exomiser's
-database. Crucially, INDIGENA inference uses only phenotype-term embeddings —
-<code>cosine_sim(embed(HP_i), embed(HP_j))</code> — not gene or disease entity embeddings. This preserves
-inductivity: any disease, including ones not seen during training, can be represented as a bag of
-HP-term embeddings and scored without retraining.</p>
+<p><strong>Integration scope.</strong> INDIGENA replaces only the pairwise phenotype similarity function
+inside BMA; gene-disease model associations remain fixed by Exomiser's database.</p>
 
-<p>The embedding space is trained on the full UPheno graph (G1–G4), so each HP-term embedding
-encodes not just ontology position but also gene-phenotype and disease-phenotype co-occurrence
-patterns. Terms that co-occur in the same biological context are pulled together even when
-ontologically distant. In practice, however, the ontology hierarchy is the dominant signal for
-HP-HP pairwise similarity, making INDIGENA and Phenodigm highly correlated for HiPhive and
-PhenIX — which explains the near-flat Track 1 results when the similarity function is swapped.</p>
+<p><strong>Training configuration (Track 1).</strong> Standalone INDIGENA outperforms the Exomiser integration on Track 1 (best MRR 0.281 vs 0.272).
+Within the integration,
+HP-only gives the best results (e.g. INDIGENA-PhenIX MRR 0.272 vs PhenIX baseline 0.259).
+MGI+HP is consistently the worst: INDIGENA-HiPhive drops to MRR 0.261 and MR 610, and
+INDIGENA-Phive falls to MRR 0.005. INDIGENA-Phive underperforms across all configs because
+Phive requires HP↔MP cross-species comparison, where Phenodigm's explicitly calibrated IC
+mapping outperforms INDIGENA's implicit UPheno alignment.</p>
 
-<p><strong>Why INDIGENA-Phive does not improve on Track 1.</strong> Phive uses mouse (MGI) and zebrafish
-(ZFIN) phenotype models, requiring HP↔MP cross-species comparison. INDIGENA learns this alignment
-implicitly from UPheno bridge axioms, while Phenodigm uses explicitly calibrated IC-based
-cross-species mapping. The implicit alignment is less precise for this task, explaining the
-performance drop for INDIGENA-Phive on Track 1.</p>
+<p><strong>Track 2.</strong> Adding variant scores improves all methods substantially (HiPhive MRR ~0.27 →
+0.58). INDIGENA methods improve MR and recall (Hits@10, Hits@100, AUC) but lower MRR and
+Hits@1 relative to their baselines. For example, INDIGENA-HiPhive (MGI-only) reduces MR from
+18.2 to 10.5, meaning the causal gene is ranked higher on average, while MRR drops from 0.580
+to 0.466, meaning fewer cases land at rank 1. INDIGENA-Phive (MGI-only) shows the sharpest
+improvement in MR (28.0 to 9.9) and achieves the best Hits@10 (0.937), Hits@100 (0.972), and
+AUC (0.959) of any method.</p>
 
-<p><strong>What the current integration does not exploit.</strong> The deeper inductive capability of INDIGENA
-— scoring a gene for which no OMIM disease entry exists by comparing its phenotype terms against
-the patient's HP terms — is not used in the current integration. Exomiser still gates scoring on
-known gene-disease associations: genes absent from the database score zero regardless of
-phenotypic similarity. Fully exploiting INDIGENA's inductive strength would require a separate
-scoring path that bypasses the disease-model lookup and directly compares gene phenotype terms
-against the patient query.</p>
-
-<p><strong>Track 2: INDIGENA improves recall when combined with variant scores.</strong> Adding variant
-pathogenicity scores dramatically improves all methods over Track 1 (MRR jumps from ~0.27 to
-~0.58 for HiPhive). Under the combined scoring scheme, INDIGENA methods trade top-1 precision
-for substantially better top-10 and top-100 recall. INDIGENA-Phive is the standout: it achieves
-MR 9.9 and Hits@10 0.937, the best of any method, despite Phive being the weakest
-phenotype-only baseline. With variant scores supplying most of the signal, INDIGENA's broader
-phenotype similarity distribution complements rather than competes with the sharp variant prior,
-pushing the causal gene into the top-10 more reliably.</p>
-
-<p><strong>Top-1 precision vs. recall trade-off in Track 2.</strong> INDIGENA methods consistently lower
-Hits@1 relative to their baselines (e.g. INDIGENA-HiPhive 0.261 vs HiPhive 0.415). The
-embedding-based similarity distributes scores more broadly across candidate genes, which hurts
-the top-1 rank but improves upper-funnel recall. Whether this trade-off is acceptable depends on
-the clinical use case (ranked shortlist vs. single top candidate).</p>
-
-<p><strong>Limitations.</strong> The current integration only exploits INDIGENA as a drop-in similarity
-function over known gene-disease models. The primary bottleneck is not the similarity function
-but the completeness of the gene-disease association database: genes with no OMIM entry score
-zero. The combined scoring scheme for Track 2 is a simple product; a learned combination may
-recover top-1 precision without sacrificing recall.</p>
+<p><strong>Limitations.</strong> Exomiser gates scoring on known gene-disease associations; genes absent
+from the database score zero regardless of phenotypic similarity, leaving INDIGENA's inductive
+capability unexploited. The Track 2 combined score is a simple product; a learned combination
+may recover top-1 precision without sacrificing recall.</p>
 
 <hr />
 

@@ -101,23 +101,87 @@ INDIGENA-PhenIX integration would produce.
 ### Standalone INDIGENA
 
 When run as a standalone gene ranker (test split, 518 cases, 2,258 genes), without
-Exomiser's gene models. Scoring mirrors Exomiser's per-disease structure:
-`score(gene) = max_d BMA(patient_HPs, disease_d_HPs)` using OMIM disease models from
-`phenotype.hpoa`, with gene→disease links from `genes_to_phenotype.txt`.
+Exomiser's gene models.
 
-| Configuration | MR | MRR | Hits@1 | Hits@3 | Hits@10 | Hits@100 | AUC |
-|---|---|---|---|---|---|---|---|
-| v1 — MGI only | 407.6 | 0.275 | 0.236 | 0.278 | 0.336 | 0.544 | 0.821 |
-| v2 — MGI + HPO | 400.9 | 0.274 | 0.232 | 0.284 | 0.344 | 0.544 | 0.822 |
+#### Training configurations
 
-Both configurations perform at or above HiPhive (MRR 0.269) as standalone gene rankers,
-with v1 (pure MGI mouse-knockout phenotypes) and v2 (MGI + HPO gene annotations) essentially
-tied. Adding HPO gene–phenotype annotations to the training graph does not improve MRR;
-v2 gains slightly on Hits@3 and Hits@10 while v1 is marginally better on Hits@1.
+Three models were trained, differing only in the G2 layer (gene→phenotype associations):
 
-The critical factor is the evaluation structure: using `max_d BMA(patient_HPs, disease_d_HPs)`
-over per-disease OMIM phenotype sets mirrors how Exomiser uses disease models at inference.
-Genes with no OMIM disease associations fall back to their merged gene phenotype set.
+| Config | G2 source | Notes |
+|---|---|---|
+| **MGI-only** | MGI mouse-knockout MP phenotypes; `--no-hpo-fallback` | Genes with no mouse ortholog have no G2 entry |
+| **HP-only** | Training-case HPO annotations per gene; `--hpo-gene-phenotypes --no-hpo-fallback` | Only genes in training cases receive G2 entries |
+| **MGI+HP** | MGI MP primary, training-case HPO additive (default) | Broadest G2 coverage |
+
+All three use the same G1 (UPheno OWL2Vec*), G3 (training disease→HP), G4 (training
+gene→disease) layers, and the same TransD hyperparameters (100-dim, 300 epochs, batch
+2,048, lr 0.001).
+
+#### Evaluation modes: per-disease vs. merged
+
+At inference, a patient is represented as a set of HP terms. Each candidate gene must be
+scored against those terms. The key question is how a gene's phenotype profile is
+constructed for the comparison.
+
+**Merged (mg) evaluation** treats a gene as a single unified bag of phenotype terms —
+either its MGI mouse-knockout MP terms, or the union of all HP terms across every OMIM
+disease associated with that gene. BMA is computed once:
+`score(gene) = BMA(patient_HPs, gene_phenos)`.
+
+**Per-disease (pd) evaluation** stratifies by OMIM disease entry. Each gene may be linked
+to multiple OMIM diseases, each with its own HP phenotype profile. The gene score is the
+maximum BMA over all its disease entries:
+`score(gene) = max_d BMA(patient_HPs, disease_d_HPs)`.
+This mirrors Exomiser's HiPhive, which scores each gene–disease model independently and
+takes the best match. MGI phenotypes are always merged (one knockout profile per gene), so
+the per-disease distinction applies only to the HP component.
+
+The five eval modes are:
+
+| Mode | Gene representation | Stratification |
+|---|---|---|
+| `eval_mgi` | MGI MP terms (merged) | — |
+| `eval_hp_mg` | OMIM disease HP terms (merged union) | — |
+| `eval_mgi_hp_mg` | MGI MP ∪ OMIM HP terms (merged) | — |
+| `eval_hp_pd` | OMIM disease HP terms | per-disease max |
+| `eval_mgi_hp_pd` | MGI MP ∪ OMIM disease HP terms | per-disease max over HP; MGI always merged |
+
+HP-only training produces no MGI embeddings, so `eval_mgi`, `eval_mgi_hp_mg`, and
+`eval_mgi_hp_pd` are not applicable for that config.
+
+#### Results (MRR, 518 test cases, 2,258 genes)
+
+**Per-disease HP evaluation**
+
+| Train \ Eval | eval_mgi | eval_hp_pd | eval_mgi_hp_pd |
+|---|---|---|---|
+| MGI-only | 0.054 | 0.275 | 0.177 |
+| HP-only | — | 0.281 | — |
+| MGI+HP | 0.058 | 0.281 | 0.180 |
+
+**Merged HP evaluation**
+
+| Train \ Eval | eval_mgi | eval_hp_mg | eval_mgi_hp_mg |
+|---|---|---|---|
+| MGI-only | 0.054 | 0.257 | 0.208 |
+| HP-only | — | 0.256 | — |
+| MGI+HP | 0.058 | 0.253 | 0.198 |
+
+Per-disease evaluation consistently outperforms merged for the HP component (e.g.
+eval_hp_pd 0.281 vs eval_hp_mg 0.256 for MGI+HP training). Merging all disease HP sets
+creates a noisy bag blending phenotypes from unrelated diseases; per-disease scoring lets
+the best-matching disease profile dominate.
+
+`eval_mgi` scores are very low (~0.054–0.058) regardless of training config. Comparing
+patient HP embeddings directly against gene MP embeddings requires cross-species alignment;
+the implicit alignment learned from UPheno bridge axioms is insufficient for this task.
+
+Combining MGI and HP at eval time (eval_mgi_hp_mg, eval_mgi_hp_pd) consistently hurts
+relative to HP-alone — MP terms introduce cross-species noise that dilutes the HP signal.
+
+HP-only and MGI+HP training are effectively tied on the best eval modes (eval_hp_pd MRR
+0.281 for both), suggesting MGI phenotypes in G2 contribute no additional signal beyond
+training-case HP annotations for HP-based inference.
 
 ### INDIGENA as Similarity Replacement in Exomiser
 
