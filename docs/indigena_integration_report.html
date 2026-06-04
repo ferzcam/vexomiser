@@ -269,6 +269,157 @@ data leakage (226 unique causal genes). Combined score =
 
 <hr />
 
+<h2>Phenotype Perturbation Robustness</h2>
+<p>To probe how each method behaves when the patient phenotype profile is degraded, every method was re-run on five HPO sets per case from <code>pavs_with_noise_hpo.tsv</code>: an unperturbed <em>baseline</em> plus four perturbations simulating realistic clinical noise. The <em>baseline</em> column reproduces the unperturbed results above, confirming the perturbation harness is consistent with the 3×3 run. Tables report Mean Rank (MR, lower is better) and MRR (higher is better).</p>
+<table>
+  <thead><tr><th>Mode</th><th>Perturbation</th></tr></thead>
+  <tbody>
+    <tr><td>Baseline</td><td>Original HPO terms (control).</td></tr>
+    <tr><td>Incomplete (≤3)</td><td>At most 3 terms kept — under-specification.</td></tr>
+    <tr><td>Noisy (+2)</td><td>2 random HPO terms added — spurious findings.</td></tr>
+    <tr><td>Imprecise (2→parent)</td><td>2 terms replaced by their ontology parent.</td></tr>
+    <tr><td>Superclass (all→parent)</td><td>Every term replaced by its parent — maximal imprecision.</td></tr>
+  </tbody>
+</table>
+<p>Numbers are macro-averaged over the 518-case test split (standalone &amp; Track 1) / 284-case subset (Track 2). For Track 2, the CLI-derived HiPhive score was made perturbation-aware by regenerating each phenopacket with the perturbed HPO set and re-running the Exomiser CLI; all other methods receive the HPO set live. Shaded cells worsen &gt;2× (MR) or fall &gt;50% (MRR) versus the same row’s baseline.</p>
+<h3>Standalone INDIGENA</h3>
+<p>INDIGENA scored directly (no Exomiser), per training config and eval mode. HP-only supports only the HP-based eval modes; MGI-only and MGI+HP support all five.</p>
+<h4>Mean Rank (MR)</h4>
+<table>
+  <thead><tr><th>Training</th><th>Eval mode</th><th>Baseline</th><th>Incomplete (≤3)</th><th>Noisy (+2)</th><th>Imprecise (2→parent)</th><th>Superclass (all→parent)</th></tr></thead>
+  <tbody>
+    <tr style="background:#f9f9e8"><td colspan="7"><em>MGI-only</em></td></tr>
+    <tr><td></td><td><code>eval_mgi</code></td><td>687.8</td><td>722.3</td><td>754.2</td><td>697.2</td><td>705.8</td></tr>
+    <tr><td></td><td><code>eval_hp_mg</code></td><td>399.0</td><td>426.3</td><td>407.4</td><td>402.1</td><td>409.8</td></tr>
+    <tr><td></td><td><code>eval_mgi_hp_mg</code></td><td>456.6</td><td>481.2</td><td>483.8</td><td>459.4</td><td>466.5</td></tr>
+    <tr><td></td><td><code>eval_hp_pd</code></td><td>401.5</td><td>423.5</td><td>408.2</td><td>402.2</td><td>409.6</td></tr>
+    <tr><td></td><td><code>eval_mgi_hp_pd</code></td><td>490.9</td><td>516.2</td><td>522.5</td><td>493.1</td><td>498.6</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="7"><em>HP-only</em></td></tr>
+    <tr><td></td><td><code>eval_hp_mg</code></td><td>389.6</td><td>420.8</td><td>395.9</td><td>403.4</td><td>421.3</td></tr>
+    <tr><td></td><td><code>eval_hp_pd</code></td><td>389.1</td><td>417.9</td><td>394.7</td><td>400.5</td><td>417.6</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="7"><em>MGI+HP</em></td></tr>
+    <tr><td></td><td><code>eval_mgi</code></td><td>580.2</td><td>615.0</td><td>610.9</td><td>617.8</td><td>650.6</td></tr>
+    <tr><td></td><td><code>eval_hp_mg</code></td><td>396.2</td><td>429.8</td><td>410.0</td><td>409.1</td><td>431.2</td></tr>
+    <tr><td></td><td><code>eval_mgi_hp_mg</code></td><td>427.7</td><td>452.9</td><td>460.8</td><td>442.4</td><td>466.5</td></tr>
+    <tr><td></td><td><code>eval_hp_pd</code></td><td>392.1</td><td>420.8</td><td>404.6</td><td>404.1</td><td>430.8</td></tr>
+    <tr><td></td><td><code>eval_mgi_hp_pd</code></td><td>449.9</td><td>476.7</td><td>489.6</td><td>462.8</td><td>493.1</td></tr>
+  </tbody>
+</table>
+<h4>MRR</h4>
+<table>
+  <thead><tr><th>Training</th><th>Eval mode</th><th>Baseline</th><th>Incomplete (≤3)</th><th>Noisy (+2)</th><th>Imprecise (2→parent)</th><th>Superclass (all→parent)</th></tr></thead>
+  <tbody>
+    <tr style="background:#f9f9e8"><td colspan="7"><em>MGI-only</em></td></tr>
+    <tr><td></td><td><code>eval_mgi</code></td><td>0.054</td><td>0.049</td><td>0.045</td><td>0.047</td><td>0.045</td></tr>
+    <tr><td></td><td><code>eval_hp_mg</code></td><td>0.257</td><td>0.133</td><td>0.244</td><td>0.244</td><td>0.203</td></tr>
+    <tr><td></td><td><code>eval_mgi_hp_mg</code></td><td>0.208</td><td>0.105</td><td>0.194</td><td>0.195</td><td>0.133</td></tr>
+    <tr><td></td><td><code>eval_hp_pd</code></td><td>0.275</td><td>0.163</td><td>0.262</td><td>0.269</td><td>0.236</td></tr>
+    <tr><td></td><td><code>eval_mgi_hp_pd</code></td><td>0.177</td><td>0.091</td><td>0.155</td><td>0.166</td><td>0.106</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="7"><em>HP-only</em></td></tr>
+    <tr><td></td><td><code>eval_hp_mg</code></td><td>0.256</td><td style="background:#fde8e8">0.125</td><td>0.245</td><td>0.233</td><td>0.171</td></tr>
+    <tr><td></td><td><code>eval_hp_pd</code></td><td>0.281</td><td>0.150</td><td>0.261</td><td>0.266</td><td>0.219</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="7"><em>MGI+HP</em></td></tr>
+    <tr><td></td><td><code>eval_mgi</code></td><td>0.058</td><td>0.043</td><td>0.059</td><td>0.055</td><td>0.047</td></tr>
+    <tr><td></td><td><code>eval_hp_mg</code></td><td>0.253</td><td style="background:#fde8e8">0.118</td><td>0.240</td><td>0.238</td><td>0.167</td></tr>
+    <tr><td></td><td><code>eval_mgi_hp_mg</code></td><td>0.198</td><td>0.099</td><td>0.174</td><td>0.186</td><td>0.109</td></tr>
+    <tr><td></td><td><code>eval_hp_pd</code></td><td>0.281</td><td>0.148</td><td>0.269</td><td>0.264</td><td>0.204</td></tr>
+    <tr><td></td><td><code>eval_mgi_hp_pd</code></td><td>0.180</td><td>0.090</td><td>0.151</td><td>0.159</td><td style="background:#fde8e8">0.081</td></tr>
+  </tbody>
+</table>
+<h3>Track 1 (phenotype-only)</h3>
+<h4>Mean Rank (MR)</h4>
+<table>
+  <thead><tr><th>Method / Training</th><th>Baseline</th><th>Incomplete (≤3)</th><th>Noisy (+2)</th><th>Imprecise (2→parent)</th><th>Superclass (all→parent)</th></tr></thead>
+  <tbody>
+    <tr style="background:#f9f9e8"><td colspan="6"><em>HiPhive</em></td></tr>
+    <tr><td>Exomiser HiPhive</td><td>505.7</td><td>530.4</td><td>535.8</td><td>517.4</td><td>534.5</td></tr>
+    <tr><td>INDIGENA-HiPhive (MGI-only)</td><td>514.1</td><td>529.9</td><td>525.9</td><td>516.4</td><td>523.9</td></tr>
+    <tr><td>INDIGENA-HiPhive (HP-only)</td><td>503.1</td><td>527.3</td><td>512.2</td><td>511.7</td><td>529.5</td></tr>
+    <tr><td>INDIGENA-HiPhive (MGI+HP)</td><td>610.1</td><td>633.7</td><td>628.7</td><td>700.5</td><td>858.4</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="6"><em>PhenIX</em></td></tr>
+    <tr><td>Exomiser PhenIX</td><td>550.9</td><td>571.3</td><td>588.2</td><td>572.0</td><td>579.7</td></tr>
+    <tr><td>INDIGENA-PhenIX (MGI-only)</td><td>511.1</td><td>526.3</td><td>518.7</td><td>508.3</td><td>517.1</td></tr>
+    <tr><td>INDIGENA-PhenIX (HP-only)</td><td>495.5</td><td>520.9</td><td>504.0</td><td>503.0</td><td>525.8</td></tr>
+    <tr><td>INDIGENA-PhenIX (MGI+HP)</td><td>606.9</td><td>632.1</td><td>615.7</td><td>696.1</td><td>840.5</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="6"><em>Phive</em></td></tr>
+    <tr><td>Exomiser Phive</td><td>860.9</td><td>892.4</td><td>885.9</td><td>846.9</td><td>856.4</td></tr>
+    <tr><td>INDIGENA-Phive (MGI-only)</td><td>812.4</td><td>842.6</td><td>876.3</td><td>824.0</td><td>832.5</td></tr>
+    <tr><td>INDIGENA-Phive (HP-only)</td><td>889.8</td><td>922.7</td><td>889.4</td><td>871.0</td><td>872.0</td></tr>
+    <tr><td>INDIGENA-Phive (MGI+HP)</td><td>1101.3</td><td>1109.1</td><td>1086.1</td><td>1101.1</td><td>1121.4</td></tr>
+  </tbody>
+</table>
+<h4>MRR</h4>
+<table>
+  <thead><tr><th>Method / Training</th><th>Baseline</th><th>Incomplete (≤3)</th><th>Noisy (+2)</th><th>Imprecise (2→parent)</th><th>Superclass (all→parent)</th></tr></thead>
+  <tbody>
+    <tr style="background:#f9f9e8"><td colspan="6"><em>HiPhive</em></td></tr>
+    <tr><td>Exomiser HiPhive</td><td>0.274</td><td style="background:#fde8e8">0.137</td><td>0.260</td><td>0.257</td><td>0.222</td></tr>
+    <tr><td>INDIGENA-HiPhive (MGI-only)</td><td>0.266</td><td>0.161</td><td>0.255</td><td>0.258</td><td>0.233</td></tr>
+    <tr><td>INDIGENA-HiPhive (HP-only)</td><td>0.269</td><td>0.151</td><td>0.256</td><td>0.255</td><td>0.211</td></tr>
+    <tr><td>INDIGENA-HiPhive (MGI+HP)</td><td>0.261</td><td>0.165</td><td>0.245</td><td>0.235</td><td style="background:#fde8e8">0.032</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="6"><em>PhenIX</em></td></tr>
+    <tr><td>Exomiser PhenIX</td><td>0.259</td><td>0.147</td><td>0.251</td><td>0.248</td><td>0.218</td></tr>
+    <tr><td>INDIGENA-PhenIX (MGI-only)</td><td>0.265</td><td>0.158</td><td>0.256</td><td>0.258</td><td>0.234</td></tr>
+    <tr><td>INDIGENA-PhenIX (HP-only)</td><td>0.272</td><td>0.152</td><td>0.257</td><td>0.255</td><td>0.208</td></tr>
+    <tr><td>INDIGENA-PhenIX (MGI+HP)</td><td>0.265</td><td>0.169</td><td>0.247</td><td>0.236</td><td style="background:#fde8e8">0.036</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="6"><em>Phive</em></td></tr>
+    <tr><td>Exomiser Phive</td><td>0.025</td><td>0.019</td><td>0.023</td><td>0.023</td><td>0.019</td></tr>
+    <tr><td>INDIGENA-Phive (MGI-only)</td><td>0.017</td><td>0.016</td><td style="background:#fde8e8">0.006</td><td>0.014</td><td>0.012</td></tr>
+    <tr><td>INDIGENA-Phive (HP-only)</td><td>0.015</td><td>0.013</td><td>0.011</td><td>0.012</td><td>0.014</td></tr>
+    <tr><td>INDIGENA-Phive (MGI+HP)</td><td>0.005</td><td>0.003</td><td>0.003</td><td>0.003</td><td>0.003</td></tr>
+  </tbody>
+</table>
+<h3>Track 2 (phenotype+genotype)</h3>
+<h4>Mean Rank (MR)</h4>
+<table>
+  <thead><tr><th>Method / Training</th><th>Baseline</th><th>Incomplete (≤3)</th><th>Noisy (+2)</th><th>Imprecise (2→parent)</th><th>Superclass (all→parent)</th></tr></thead>
+  <tbody>
+    <tr style="background:#f9f9e8"><td colspan="6"><em>HiPhive</em></td></tr>
+    <tr><td>Exomiser HiPhive</td><td>18.2</td><td>17.4</td><td>18.6</td><td>16.7</td><td>15.5</td></tr>
+    <tr><td>INDIGENA-HiPhive (MGI-only)</td><td>10.5</td><td>10.5</td><td>10.5</td><td>10.6</td><td>10.6</td></tr>
+    <tr><td>INDIGENA-HiPhive (HP-only)</td><td>10.5</td><td>10.5</td><td>10.5</td><td>10.6</td><td>10.6</td></tr>
+    <tr><td>INDIGENA-HiPhive (MGI+HP)</td><td>10.6</td><td>10.7</td><td>11.5</td><td>11.5</td><td>12.6</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="6"><em>PhenIX</em></td></tr>
+    <tr><td>Exomiser PhenIX</td><td>26.7</td><td>26.7</td><td>26.8</td><td>28.3</td><td>28.4</td></tr>
+    <tr><td>INDIGENA-PhenIX (MGI-only)</td><td>22.9</td><td>22.9</td><td>22.9</td><td>22.9</td><td>23.0</td></tr>
+    <tr><td>INDIGENA-PhenIX (HP-only)</td><td>22.9</td><td>22.9</td><td>22.9</td><td>22.9</td><td>22.9</td></tr>
+    <tr><td>INDIGENA-PhenIX (MGI+HP)</td><td>23.0</td><td>23.0</td><td>23.0</td><td>23.1</td><td>23.1</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="6"><em>Phive</em></td></tr>
+    <tr><td>Exomiser Phive</td><td>28.0</td><td>31.5</td><td>25.3</td><td>28.7</td><td>31.8</td></tr>
+    <tr><td>INDIGENA-Phive (MGI-only)</td><td>9.9</td><td>9.9</td><td>9.9</td><td>10.0</td><td>10.0</td></tr>
+    <tr><td>INDIGENA-Phive (HP-only)</td><td>9.9</td><td>9.9</td><td>9.9</td><td>10.0</td><td>10.0</td></tr>
+    <tr><td>INDIGENA-Phive (MGI+HP)</td><td>10.0</td><td>10.0</td><td>10.0</td><td>10.0</td><td>10.1</td></tr>
+  </tbody>
+</table>
+<h4>MRR</h4>
+<table>
+  <thead><tr><th>Method / Training</th><th>Baseline</th><th>Incomplete (≤3)</th><th>Noisy (+2)</th><th>Imprecise (2→parent)</th><th>Superclass (all→parent)</th></tr></thead>
+  <tbody>
+    <tr style="background:#f9f9e8"><td colspan="6"><em>HiPhive</em></td></tr>
+    <tr><td>Exomiser HiPhive</td><td>0.580</td><td>0.577</td><td>0.558</td><td>0.574</td><td>0.556</td></tr>
+    <tr><td>INDIGENA-HiPhive (MGI-only)</td><td>0.466</td><td>0.464</td><td>0.467</td><td>0.463</td><td>0.447</td></tr>
+    <tr><td>INDIGENA-HiPhive (HP-only)</td><td>0.462</td><td>0.460</td><td>0.464</td><td>0.461</td><td>0.452</td></tr>
+    <tr><td>INDIGENA-HiPhive (MGI+HP)</td><td>0.443</td><td>0.440</td><td>0.423</td><td>0.427</td><td>0.408</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="6"><em>PhenIX</em></td></tr>
+    <tr><td>Exomiser PhenIX</td><td>0.536</td><td>0.533</td><td>0.509</td><td>0.514</td><td>0.505</td></tr>
+    <tr><td>INDIGENA-PhenIX (MGI-only)</td><td>0.453</td><td>0.453</td><td>0.456</td><td>0.454</td><td>0.439</td></tr>
+    <tr><td>INDIGENA-PhenIX (HP-only)</td><td>0.453</td><td>0.452</td><td>0.456</td><td>0.452</td><td>0.443</td></tr>
+    <tr><td>INDIGENA-PhenIX (MGI+HP)</td><td>0.435</td><td>0.431</td><td>0.410</td><td>0.416</td><td>0.399</td></tr>
+    <tr style="background:#f9f9e8"><td colspan="6"><em>Phive</em></td></tr>
+    <tr><td>Exomiser Phive</td><td>0.339</td><td>0.334</td><td>0.350</td><td>0.336</td><td>0.317</td></tr>
+    <tr><td>INDIGENA-Phive (MGI-only)</td><td>0.434</td><td>0.434</td><td>0.411</td><td>0.413</td><td>0.411</td></tr>
+    <tr><td>INDIGENA-Phive (HP-only)</td><td>0.412</td><td>0.408</td><td>0.424</td><td>0.409</td><td>0.412</td></tr>
+    <tr><td>INDIGENA-Phive (MGI+HP)</td><td>0.395</td><td>0.394</td><td>0.404</td><td>0.379</td><td>0.388</td></tr>
+  </tbody>
+</table>
+<h3>Findings</h3>
+<p><strong>Genotype buffers phenotype noise (Track 2).</strong> With variant evidence in the mix, perturbing phenotypes barely moves accuracy — Exomiser HiPhive MRR holds at 0.58→0.56 under full superclass replacement, and MR stays in the teens across every mode. In the full clinical pipeline, phenotype degradation is largely absorbed by the genotype signal.</p>
+<p><strong>Incomplete phenotyping is the most damaging perturbation (standalone &amp; Track 1).</strong> Restricting to ≤3 terms roughly halves phenotype-only MRR (Exomiser HiPhive 0.274→0.137), whereas adding random terms or replacing two terms with parents is nearly harmless.</p>
+<p><strong>The MGI+HP INDIGENA model collapses under full superclass replacement.</strong> Uniquely among configs, INDIGENA-HiPhive/PhenIX (MGI+HP) lose ≈94% of Track 1 Hits@1 under <em>superclass_all</em> (MRR 0.26→0.03), and the standalone MGI+HP modes show the same fragility, while MGI-only and HP-only generalise gracefully. The combined embedding appears to rely on leaf-term neighbourhoods that vanish under maximal generalisation.</p>
+<p><strong>Phive remains weak throughout.</strong> Both Exomiser Phive and its INDIGENA variants sit near the floor, so perturbation effects are noise on an already-low signal.</p>
+
+<hr />
+
 <h2>Discussion</h2>
 
 <p><strong>Integration scope.</strong> INDIGENA replaces only the pairwise phenotype similarity function
@@ -302,6 +453,7 @@ may recover top-1 precision without sacrificing recall.</p>
 <ul>
   <li><strong>Score combination</strong>: investigate learned or calibrated combination of variant and phenotype scores to recover top-1 precision without sacrificing Hits@10 recall</li>
   <li><strong>Multihop-GDA integration</strong>: add the Multihop-GDA method as a second <code>ModelScorerFactory</code> implementation and compare against INDIGENA on both tracks</li>
+  <li><strong>MGI+HP superclass collapse</strong>: investigate why the combined MGI+HP embedding loses ≈94% of Track 1 Hits@1 under full superclass replacement while the single-source models generalise — likely an over-reliance on leaf-term neighbourhoods worth addressing before favouring the combined model</li>
 </ul>
 
 </body>

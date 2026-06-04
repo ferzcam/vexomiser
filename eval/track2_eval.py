@@ -325,6 +325,32 @@ def load_cases(split: str) -> pd.DataFrame:
     return df
 
 
+def apply_hpo_perturbation(df: pd.DataFrame, hpo_file: str, hpo_column: str) -> pd.DataFrame:
+    """Override each case's hpo_list from a perturbation column in a noise TSV.
+
+    The noise file (e.g. pavs_with_noise_hpo.tsv) is keyed by case_id and stores
+    perturbed HPO sets as "HP:xxxx;HP:yyyy". Cases absent from the file or NaN in
+    the chosen column get an empty hpo_list (scored 0, like missing phenotypes).
+
+    Note: only the in-process phenotype scorers (phenix / phive / indigena_*) read
+    hpo_list, so this perturbs them. The CLI-derived hiphive score is unaffected.
+    """
+    noise = pd.read_csv(hpo_file, sep="\t", dtype=str, usecols=["case_id", hpo_column])
+    mapping = {
+        cid: [t.split("|")[0] for t in str(val).split(";") if t]
+        for cid, val in zip(noise["case_id"], noise[hpo_column])
+        if pd.notna(val)
+    }
+    df = df.copy()
+    df["hpo_list"] = df["case_id"].map(lambda c: mapping.get(c, []))
+    n_matched = df["case_id"].isin(mapping).sum()
+    logger.info(
+        f"HPO perturbation '{hpo_column}' from {os.path.basename(hpo_file)}: "
+        f"{n_matched}/{len(df)} cases matched"
+    )
+    return df
+
+
 def load_gene_entrez_map() -> dict:
     path = os.path.join(DATA_DIR, "pavs", "PAVS_cases.tsv")
     df = pd.read_csv(path, sep="\t", usecols=["gene_symbol", "gene_id"])
@@ -365,7 +391,18 @@ def emit(f, text):
            help="Skip Exomiser CLI phase and reuse existing TSV files in --work-dir.")
 @ck.option("--tag", default="", show_default=True,
            help="Optional tag appended to output filenames, e.g. 'mgi_only' or 'hp_only'.")
-def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir, skip_cli, tag):
+@ck.option("--hpo-file", default=None,
+           help="Optional TSV of perturbed HPO sets keyed by case_id "
+                "(e.g. data/pavs_with_noise_hpo.tsv). Used with --hpo-column.")
+@ck.option("--hpo-column", default=None,
+           help="Column in --hpo-file to use as the HPO set, e.g. "
+                "'hpo_terms_noisy_2'. Requires --hpo-file.")
+@ck.option("--phenopacket-dir", default=None,
+           help="Directory of phenopacket JSONs for the CLI phase. Defaults to "
+                "data/pavs/phenopackets/. Point at a perturbed-phenopacket dir so the "
+                "CLI-derived hiphive score reflects the perturbed HPO set.")
+def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir, skip_cli, tag,
+         hpo_file, hpo_column, phenopacket_dir):
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
     import glob as _glob
@@ -382,6 +419,10 @@ def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir, sk
 
     logger.info("Loading Track 2 cases...")
     cases = load_cases(split)
+    if hpo_file or hpo_column:
+        if not (hpo_file and hpo_column):
+            raise ck.UsageError("--hpo-file and --hpo-column must be given together")
+        cases = apply_hpo_perturbation(cases, hpo_file, hpo_column)
     gene_entrez = load_gene_entrez_map()
 
     eval_genes = sorted(cases["gene_symbol"].dropna().unique().tolist())
@@ -389,7 +430,9 @@ def main(phenotype_data_dir, app_props, split, workers, embeddings, work_dir, sk
     logger.info(f"{len(cases)} cases, {len(eval_genes)} genes in pool")
 
     vcf_dir = os.path.join(DATA_DIR, "spiked_vcfs_fixed")
-    phenopacket_dir = os.path.join(DATA_DIR, "pavs", "phenopackets")
+    if phenopacket_dir is None:
+        phenopacket_dir = os.path.join(DATA_DIR, "pavs", "phenopackets")
+    logger.info(f"Using phenopacket dir: {phenopacket_dir}")
 
     split_tag = f"_{split}" if split != "all" else ""
     tag_suffix = f"_{tag}" if tag else ""

@@ -199,6 +199,25 @@ def load_cases(track: int) -> pd.DataFrame:
     return df
 
 
+def apply_hpo_perturbation(df: pd.DataFrame, hpo_file: str, hpo_column: str) -> pd.DataFrame:
+    """Override each eval case's hpo_list (query terms) from a perturbation column
+    in a noise TSV keyed by case_id. Only the query is perturbed, not the graph."""
+    noise = pd.read_csv(hpo_file, sep="\t", dtype=str, usecols=["case_id", hpo_column])
+    mapping = {
+        cid: [t.split("|")[0] for t in str(val).split(";") if t]
+        for cid, val in zip(noise["case_id"], noise[hpo_column])
+        if pd.notna(val)
+    }
+    df = df.copy()
+    df["hpo_list"] = df["case_id"].map(lambda c: mapping.get(c, []))
+    n_matched = df["case_id"].isin(mapping).sum()
+    logger.info(
+        f"HPO perturbation '{hpo_column}' from {os.path.basename(hpo_file)}: "
+        f"{n_matched}/{len(df)} eval cases matched"
+    )
+    return df
+
+
 def load_split_ids(split: str) -> set:
     path = os.path.join(DATA_DIR, "splits", f"{split}.tsv")
     if not os.path.exists(path):
@@ -678,10 +697,20 @@ def evaluate(model, test_cases: pd.DataFrame, eval_genes: list,
                 "Genes with no MGI ortholog get no G2 phenotype edges.")
 @ck.option("--only-eval", is_flag=True,
            help="Skip training; load existing model checkpoint and evaluate.")
+@ck.option("--hpo-file", default=None,
+           help="Optional TSV of perturbed HPO sets keyed by case_id "
+                "(e.g. data/pavs_with_noise_hpo.tsv). Overrides the eval cases' query "
+                "HPO terms only (not the training graph). Used with --hpo-column.")
+@ck.option("--hpo-column", default=None,
+           help="Column in --hpo-file to use as the eval query HPO, e.g. "
+                "'hpo_terms_noisy_2'. Requires --hpo-file.")
+@ck.option("--tag", default="", show_default=True,
+           help="Optional tag appended to output filenames, e.g. a perturbation mode.")
 def main(upheno_edges, mgi_gene_phenotypes, hom_file, hpo_gene_phenotypes, phenotype_hpoa,
          eval_gene_phenotypes, no_hpo_fallback,
          track, eval_split, graph2, graph3, graph4,
-         embedding_dim, batch_size, learning_rate, num_epochs, random_seed, only_eval):
+         embedding_dim, batch_size, learning_rate, num_epochs, random_seed, only_eval,
+         hpo_file, hpo_column, tag):
 
     track = int(track)
     if graph4:
@@ -706,6 +735,10 @@ def main(upheno_edges, mgi_gene_phenotypes, hom_file, hpo_gene_phenotypes, pheno
     train_cases = all_cases[all_cases["case_id"].isin(train_ids)].reset_index(drop=True)
     val_cases = all_cases[all_cases["case_id"].isin(val_ids)].reset_index(drop=True)
     eval_cases = all_cases[all_cases["case_id"].isin(eval_ids)].reset_index(drop=True)
+    if hpo_file or hpo_column:
+        if not (hpo_file and hpo_column):
+            raise ck.UsageError("--hpo-file and --hpo-column must be given together")
+        eval_cases = apply_hpo_perturbation(eval_cases, hpo_file, hpo_column)
     logger.info(f"Train: {len(train_cases)} | Val: {len(val_cases)} | Eval ({eval_split}): {len(eval_cases)}")
 
     # Disease IDs in test/val (for inductive exclusion)
@@ -798,11 +831,12 @@ def main(upheno_edges, mgi_gene_phenotypes, hom_file, hpo_gene_phenotypes, pheno
             relation_dim=embedding_dim,
             random_seed=random_seed,
         ).to(device)
-        model.load_state_dict(th.load(model_path, weights_only=True))
+        model.load_state_dict(th.load(model_path, map_location=device, weights_only=True))
         logger.info(f"Loaded model from {model_path}")
 
     # ---- Evaluate ----
-    out_prefix = os.path.join(RESULTS_DIR, f"{file_id}_{eval_split}")
+    tag_suffix = f"_{tag}" if tag else ""
+    out_prefix = os.path.join(RESULTS_DIR, f"{file_id}_{eval_split}{tag_suffix}")
     logger.info(f"Evaluating on {eval_split} split ({len(eval_cases)} cases)...")
     model.eval()
 

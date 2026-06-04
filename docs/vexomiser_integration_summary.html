@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vexomiser — INDIGENA Integration: Consolidated Results</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+         line-height: 1.5; color: #1c1c1c; max-width: 940px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.55rem; border-bottom: 2px solid #ccc; padding-bottom: .3rem; }
+  h2 { font-size: 1.2rem; margin-top: 2rem; border-bottom: 1px solid #eee; padding-bottom: .2rem; }
+  p.lead { font-size: .98rem; }
+  table { border-collapse: collapse; width: 100%; margin: .6rem 0 .3rem; font-size: .9rem; }
+  th, td { border: 1px solid #ddd; padding: 5px 8px; text-align: center; }
+  th { background: #f4f4f4; }
+  td:first-child, th:first-child { text-align: left; white-space: nowrap; }
+  caption { caption-side: top; text-align: left; font-style: italic; color: #555;
+            margin-bottom: .3rem; font-size: .9rem; }
+  tr.ind td { background: #eef4fb; }            /* INDIGENA rows */
+  td.best { font-weight: 700; }
+  .up { color: #1a7f37; } .down { color: #b3261e; }
+  .note { font-size: .85rem; color: #555; }
+  code { background: #f3f3f3; padding: 1px 4px; border-radius: 3px; font-size: .85em; }
+  details { margin: .4rem 0; }
+  summary { cursor: pointer; color: #1a55a8; font-size: .9rem; }
+</style>
+</head>
+<body>
+
+<h1>Vexomiser: INDIGENA Integration — Consolidated Results</h1>
+
+<p class="lead">We replace the information-content (IC) phenotype similarity inside Exomiser's
+<strong>HiPhive</strong>, <strong>PhenIX</strong> and <strong>Phive</strong> prioritisers with
+INDIGENA's embedding-based best-match-average (BMA) similarity, leaving each prioritiser's
+gene&ndash;phenotype model associations unchanged. Evaluation uses the <strong>PAVS</strong>
+benchmark under a disease-disjoint split: <strong>Track&nbsp;1</strong> (phenotype-only, 518 test
+cases, 2,258-gene pool) and <strong>Track&nbsp;2</strong> (phenotype + variant, 284 cases,
+226-gene pool). INDIGENA is trained with TransD on a UPheno-based knowledge graph; the
+gene&rarr;phenotype source (G2) defines three configs (MGI-only, HP-only, MGI+HP). Tables below
+report the <strong>best config per method</strong>; full per-config results are in the original
+report.</p>
+
+<p class="note"><strong>Headline.</strong> On Track&nbsp;1, INDIGENA similarity is
+<em>on par</em> with Exomiser's IC similarity (PhenIX slightly improves). On Track&nbsp;2, where a
+variant score is present, INDIGENA substantially improves Mean Rank, Hits@10/100 and AUC across all
+three prioritisers, at some cost to top-1 (MRR/Hits@1). Phenotype perturbations are largely absorbed
+once genotype is available (Track&nbsp;2), while incomplete phenotyping is the most damaging
+degradation in phenotype-only ranking. In Tables&nbsp;1&ndash;3, <strong>bold</strong> marks the best value
+in each column (ties bolded jointly); Table&nbsp;4 bolds per-track (see its note).</p>
+
+<h2>Table 1 — Standalone INDIGENA (phenotype-only, best eval mode <code>eval_hp_pd</code>)</h2>
+<table>
+  <caption>INDIGENA used directly to rank genes (no Exomiser), 518 test cases. Best training config
+  by MRR: HP-only and MGI+HP tie. Lower MR is better; higher is better for the rest.</caption>
+  <thead>
+    <tr><th>Training config</th><th>MR&nbsp;&darr;</th><th>MRR</th><th>Hits@1</th><th>Hits@10</th><th>Hits@100</th><th>AUC</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>MGI-only</td><td>401.5</td><td>0.275</td><td>0.236</td><td>0.336</td><td>0.544</td><td>0.823</td></tr>
+    <tr><td>HP-only</td><td class="best">389.1</td><td class="best">0.281</td><td>0.237</td><td class="best">0.357</td><td class="best">0.564</td><td class="best">0.829</td></tr>
+    <tr><td>MGI+HP</td><td>392.1</td><td class="best">0.281</td><td class="best">0.239</td><td>0.353</td><td>0.556</td><td>0.827</td></tr>
+  </tbody>
+</table>
+<p class="note">Per-disease HP evaluation (<code>eval_hp_pd</code>) beats merged-gene evaluation;
+combining MGI and HP at eval time hurts. MGI-only signal alone (<code>eval_mgi</code>) is weak
+(MRR ≈ 0.05).</p>
+
+<h2>Table 2 — Integration, Track 1 (phenotype-only)</h2>
+<table>
+  <caption>Exomiser prioritiser with original IC similarity vs. INDIGENA similarity (best config).
+  518 test cases, 2,258-gene pool.</caption>
+  <thead>
+    <tr><th>Method</th><th>MR&nbsp;&darr;</th><th>MRR</th><th>Hits@1</th><th>Hits@10</th><th>Hits@100</th><th>AUC</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Exomiser HiPhive</td><td>505.7</td><td class="best">0.274</td><td class="best">0.239</td><td class="best">0.351</td><td>0.492</td><td>0.777</td></tr>
+    <tr class="ind"><td>INDIGENA-HiPhive (HP-only)</td><td>503.1</td><td>0.269</td><td>0.228</td><td>0.338</td><td class="best">0.517</td><td>0.778</td></tr>
+    <tr><td>Exomiser PhenIX</td><td>550.9</td><td>0.259</td><td>0.224</td><td>0.324</td><td>0.479</td><td>0.757</td></tr>
+    <tr class="ind"><td>INDIGENA-PhenIX (HP-only)</td><td class="best">495.5</td><td>0.272</td><td>0.232</td><td>0.340</td><td class="best">0.517</td><td class="best">0.782</td></tr>
+    <tr><td>Exomiser Phive</td><td>860.9</td><td>0.025</td><td>0.010</td><td>0.046</td><td>0.193</td><td>0.620</td></tr>
+    <tr class="ind"><td>INDIGENA-Phive (MGI-only)</td><td>812.4</td><td>0.017</td><td>0.008</td><td>0.023</td><td>0.056</td><td>0.641</td></tr>
+  </tbody>
+</table>
+<p class="note">INDIGENA-HiPhive/PhenIX match their baselines (PhenIX improves on every metric).
+Phive is weak under both similarities. For reference, standalone INDIGENA (Table&nbsp;1, MRR 0.281)
+slightly exceeds the best in-Exomiser Track&nbsp;1 result.</p>
+
+<h2>Table 3 — Integration, Track 2 (phenotype + variant)</h2>
+<table>
+  <caption>Combined score = <code>EXOMISER_GENE_VARIANT_SCORE × phenotype_score</code> (HiPhive uses
+  <code>EXOMISER_GENE_COMBINED_SCORE</code>). 284 cases, 226-gene pool. Best INDIGENA config: MGI-only.</caption>
+  <thead>
+    <tr><th>Method</th><th>MR&nbsp;&darr;</th><th>MRR</th><th>Hits@1</th><th>Hits@10</th><th>Hits@100</th><th>AUC</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Exomiser HiPhive</td><td>18.2</td><td class="best">0.580</td><td class="best">0.415</td><td>0.873</td><td>0.926</td><td>0.922</td></tr>
+    <tr class="ind"><td>INDIGENA-HiPhive (MGI-only)</td><td>10.5</td><td>0.466</td><td>0.261</td><td>0.926</td><td>0.968</td><td>0.956</td></tr>
+    <tr><td>Exomiser PhenIX</td><td>26.7</td><td>0.536</td><td>0.401</td><td>0.782</td><td>0.880</td><td>0.885</td></tr>
+    <tr class="ind"><td>INDIGENA-PhenIX (MGI-only)</td><td>22.9</td><td>0.453</td><td>0.257</td><td>0.813</td><td>0.901</td><td>0.902</td></tr>
+    <tr><td>Exomiser Phive</td><td>28.0</td><td>0.339</td><td>0.134</td><td>0.768</td><td>0.880</td><td>0.879</td></tr>
+    <tr class="ind"><td>INDIGENA-Phive (MGI-only)</td><td class="best">9.9</td><td>0.434</td><td>0.201</td><td class="best">0.937</td><td class="best">0.972</td><td class="best">0.959</td></tr>
+  </tbody>
+</table>
+<p class="note">With variant evidence present, INDIGENA <span class="up">improves MR, Hits@10,
+Hits@100 and AUC for every prioritiser</span> (e.g. HiPhive MR 18.2&rarr;10.5, Hits@10
+0.873&rarr;0.926), <span class="down">at a cost to top-1 (MRR/Hits@1)</span>. INDIGENA-Phive
+(MGI-only) is the single best Track&nbsp;2 configuration overall (MR 9.9, AUC 0.959).</p>
+
+<h2>Table 4 — Phenotype perturbation robustness</h2>
+<p class="note">Five HPO perturbations per case, shown for <strong>PhenIX</strong> on Track&nbsp;1
+(phenotype-only, best INDIGENA config HP-only) and <strong>Phive</strong> on Track&nbsp;2
+(phenotype + variant, best config MGI-only). Baseline reproduces Tables&nbsp;2&ndash;3.
+<strong>Bold</strong> marks the better method per column <em>within each track</em> (the two tracks
+use different gene pools and are not directly comparable).</p>
+
+<table>
+  <caption>Mean Rank (MR, lower is better).</caption>
+  <thead>
+    <tr><th>Method</th><th>Baseline</th><th>Incomplete&nbsp;(≤3)</th><th>Noisy&nbsp;(+2)</th><th>Imprecise&nbsp;(2→parent)</th><th>Superclass&nbsp;(all→parent)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td colspan="6" style="background:#f9f9e8"><em>Track 1 — PhenIX</em></td></tr>
+    <tr><td>Exomiser PhenIX</td><td>550.9</td><td>571.3</td><td>588.2</td><td>572.0</td><td>579.7</td></tr>
+    <tr class="ind"><td>INDIGENA-PhenIX (HP-only)</td><td class="best">495.5</td><td class="best">520.9</td><td class="best">504.0</td><td class="best">503.0</td><td class="best">525.8</td></tr>
+    <tr><td colspan="6" style="background:#f9f9e8"><em>Track 2 — Phive</em></td></tr>
+    <tr><td>Exomiser Phive</td><td>28.0</td><td>31.5</td><td>25.3</td><td>28.7</td><td>31.8</td></tr>
+    <tr class="ind"><td>INDIGENA-Phive (MGI-only)</td><td class="best">9.9</td><td class="best">9.9</td><td class="best">9.9</td><td class="best">10.0</td><td class="best">10.0</td></tr>
+  </tbody>
+</table>
+
+<table>
+  <caption>MRR (higher is better).</caption>
+  <thead>
+    <tr><th>Method</th><th>Baseline</th><th>Incomplete&nbsp;(≤3)</th><th>Noisy&nbsp;(+2)</th><th>Imprecise&nbsp;(2→parent)</th><th>Superclass&nbsp;(all→parent)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td colspan="6" style="background:#f9f9e8"><em>Track 1 — PhenIX</em></td></tr>
+    <tr><td>Exomiser PhenIX</td><td>0.259</td><td class="down">0.147</td><td>0.251</td><td>0.248</td><td class="best">0.218</td></tr>
+    <tr class="ind"><td>INDIGENA-PhenIX (HP-only)</td><td class="best">0.272</td><td class="best down">0.152</td><td class="best">0.257</td><td class="best">0.255</td><td>0.208</td></tr>
+    <tr><td colspan="6" style="background:#f9f9e8"><em>Track 2 — Phive</em></td></tr>
+    <tr><td>Exomiser Phive</td><td>0.339</td><td>0.334</td><td>0.350</td><td>0.336</td><td>0.317</td></tr>
+    <tr class="ind"><td>INDIGENA-Phive (MGI-only)</td><td class="best">0.434</td><td class="best">0.434</td><td class="best">0.411</td><td class="best">0.413</td><td class="best">0.411</td></tr>
+  </tbody>
+</table>
+
+<table>
+  <caption>AUC (higher is better).</caption>
+  <thead>
+    <tr><th>Method</th><th>Baseline</th><th>Incomplete&nbsp;(≤3)</th><th>Noisy&nbsp;(+2)</th><th>Imprecise&nbsp;(2→parent)</th><th>Superclass&nbsp;(all→parent)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td colspan="6" style="background:#f9f9e8"><em>Track 1 — PhenIX</em></td></tr>
+    <tr><td>Exomiser PhenIX</td><td>0.757</td><td>0.748</td><td>0.741</td><td>0.748</td><td>0.744</td></tr>
+    <tr class="ind"><td>INDIGENA-PhenIX (HP-only)</td><td class="best">0.782</td><td class="best">0.770</td><td class="best">0.778</td><td class="best">0.778</td><td class="best">0.768</td></tr>
+    <tr><td colspan="6" style="background:#f9f9e8"><em>Track 2 — Phive</em></td></tr>
+    <tr><td>Exomiser Phive</td><td>0.879</td><td>0.864</td><td>0.891</td><td>0.876</td><td>0.863</td></tr>
+    <tr class="ind"><td>INDIGENA-Phive (MGI-only)</td><td class="best">0.959</td><td class="best">0.959</td><td class="best">0.960</td><td class="best">0.959</td><td class="best">0.959</td></tr>
+  </tbody>
+</table>
+
+<p class="note"><strong>Findings.</strong>
+(1) <em>Incomplete phenotyping is the most damaging perturbation</em> in phenotype-only ranking —
+restricting to ≤3 terms roughly halves Track&nbsp;1 MRR for both PhenIX similarities
+(0.259&rarr;0.147; INDIGENA 0.272&rarr;0.152, marked red).
+(2) <em>Genotype buffers phenotype noise</em>: Track&nbsp;2 (Phive) is nearly flat across all five
+modes, and INDIGENA-Phive is essentially invariant (MR ≈ 10, AUC ≈ 0.96 throughout) while staying
+far ahead of Exomiser Phive (MR ≈ 28&ndash;32, AUC ≈ 0.86&ndash;0.89) under every perturbation.
+(3) <em>The MGI+HP config collapses under full superclass replacement</em> (Track&nbsp;1 HiPhive MRR
+0.261&rarr;0.032; not shown), whereas MGI-only and HP-only generalise gracefully — the combined
+embedding over-relies on leaf-term neighbourhoods.</p>
+
+<h2>Methods (brief)</h2>
+<p class="note">INDIGENA replaces only the pairwise phenotype-similarity function; gene&ndash;phenotype
+model associations (OMIM/MGI/ZFIN) are unchanged. Knowledge graph: G1 UPheno OWL2Vec* projection
+(771K triples; HP/MP/UPHENO), G2 gene&rarr;phenotype (config-dependent), G3 training-case
+disease&rarr;HP (test/val diseases excluded for inductiveness), G4 training-case gene&harr;disease.
+Training: TransD, 100-d embeddings, Adam, batch 2,048, lr 1e-3. Split: disease-disjoint 80/10/10,
+cohort-stratified; results on the 518-case test split (Track&nbsp;1) / 284-case leakage-free subset
+(Track&nbsp;2). Metrics macro-averaged over cases.</p>
+
+<details>
+  <summary>Provenance</summary>
+  <p class="note">Consolidated from <code>docs/indigena_integration_report.html</code> (full per-config
+  tables and the 6-table perturbation block). Standalone &amp; Track&nbsp;1/2 numbers: 3×3 evaluation
+  matrix; perturbation numbers: 5-mode robustness run. This file is the paper-style summary; the
+  original report retains all detail.</p>
+</details>
+
+</body>
+</html>
