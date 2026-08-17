@@ -91,13 +91,24 @@ the Python export hashed, and a silent hash miss would score every gene 0.
 
 `ModelScorer` scores **models** (a gene's mouse orthologs, its diseases), and the
 prioritiser then takes the max over a gene's models. A gene with **no** model is never
-passed to the scorer at all and is assigned 0 by the prioritiser.
+passed to the scorer at all — and `PhivePriority` does not give it 0, it substitutes the
+constant `NO_MOUSE_MODEL_SCORE = 0.6f` (`PhivePriority.java:63`).
 
-EmbedPVP's MS has no such notion — it is defined for every gene that has an embedding,
-annotated or not. So `EmbedpvpModelScorer` reproduces EmbedPVP exactly for genes with at
-least one model, and *cannot* reproduce it for genes with none. That gap is precisely the
-slice design decision D4 says must not be dropped, so it has to be reported, not papered
-over.
+EmbedPVP's MS has no such notion: it is defined for every gene that has an embedding,
+annotated or not. So `EmbedpvpModelScorer` reproduces EmbedPVP exactly for genes that reach
+it, and the prioritiser overrides it for genes that do not.
+
+Measured on 6,972 (case, gene) pairs from 22 test cases
+(`embedpvp2/results/dualtrack/`, 2026-08-17):
+
+* the scorer itself agrees with EmbedPVP's own function to **6.7e-8** (float32 vs float64);
+* **1,980 / 6,972 pairs (28.4 %)** never reach the scorer and come out of `PhivePriority`
+  as exactly 0.6;
+* **119** of those had a genuine non-zero EmbedPVP MS that the 0.6 default discarded.
+
+That 28 % is precisely the no-annotation slice design decision D4 says must not be dropped,
+so the prioritiser path cannot be used to reproduce EmbedPVP. Closing the gap needs a
+`Prioritiser` implementation that scores every gene directly, not a `ModelScorer`.
 
 The variant-level harness in `embedpvp2/code/eval/combine_variant_scores.py` takes the
 other route — an external per-gene score table joined onto Exomiser's per-variant output —
