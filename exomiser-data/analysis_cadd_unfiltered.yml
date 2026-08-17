@@ -5,18 +5,27 @@
 ## its whole synthetic genome (~98,194 variants, no variant-effect filter).
 ##
 ## Differences from analysis_cadd.yml:
-##   - variantEffectFilter  REMOVED       (keeps intronic / intergenic / UTR / non-coding)
-##   - frequencyFilter      maxFrequency 100.0  (keeps every variant, however common)
-##   - inheritanceFilter    REMOVED       (keeps variants incompatible with every MOI, and
-##                                         stops the output being variant x MOI rows)
+##   - variantEffectFilter  REMOVED  (keeps intronic / intergenic / UTR / non-coding)
+##   - frequencyFilter      REMOVED  (see the warning below — this is deliberate)
+##   - inheritanceFilter    REMOVED  (keeps variants incompatible with every MOI, and
+##                                    stops the output being variant x MOI rows)
 ##
-## The frequency filter is *relaxed*, not deleted. Exomiser attaches frequency data via a
-## decorator on that step, and EXOMISER_VARIANT_SCORE is
-## `whiteListed ? 1 : frequencyScore * pathogenicityScore`
-## (VariantEvaluation.java:362). Deleting the step leaves frequencyData empty, so the
-## variant score silently changes meaning between the two arms and they stop being
-## comparable. maxFrequency 100.0 removes nothing (frequencies are percentages) while
-## keeping the score definition identical to the filtered arm.
+## WARNING — do not "relax" the frequency filter instead of removing it. Measured on
+## PAVS:A0000003: with `frequencyFilter: { maxFrequency: 100.0 }` the filters still pass
+## 93,153 variants (FREQUENCY_FILTER: pass=93153 fail=0) but the TSV_VARIANT output
+## collapses to 2,771. The cause is GeneScoreRanker.java:100, which emits a variant only
+## when `(geneScore.combinedScore() == 0) != variantEvaluation.passedFilters()` — so for a
+## gene whose combined score is 0, the *passing* variants are dropped. Attaching frequency
+## data makes EXOMISER_VARIANT_SCORE `frequencyScore * pathogenicityScore`
+## (VariantEvaluation.java:362), which zeroes the score of common variants, which zeroes
+## most genes' combined score, which deletes their variants from the output.
+##
+## Consequence to carry downstream: with no frequency data, EXOMISER_VARIANT_SCORE in this
+## arm is the pathogenicity score alone, whereas in the filtered arm it also carries a
+## frequency factor. The two arms' EXOMISER_VARIANT_SCORE are therefore *not* the same
+## quantity. Compare the arms on MAX_PATH (the raw predictor value), which is unaffected —
+## and which is also the only whitelist-free column, since EXOMISER_VARIANT_SCORE is forced
+## to 1.0 for any ClinVar-whitelisted variant.
 ## Everything else — pathogenicitySources, the prioritisers, the scoring — is identical,
 ## so the only thing that changes between the two arms is the size of the candidate pool.
 ##
@@ -55,7 +64,6 @@ steps: [
   geneBlacklistFilter: { },
   failedVariantFilter: { },
   alleleBalanceFilter: { },
-    frequencyFilter: { maxFrequency: 100.0 },
     pathogenicityFilter: { keepNonPathogenic: true },
     omimPrioritiser: { },
     hiPhivePrioritiser: { }
