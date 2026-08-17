@@ -1,0 +1,53 @@
+## CADD, filters relaxed — "unfiltered" arm of the pathogenicity re-measurement.
+##
+## Purpose: rank the causal variant among *all* variants in the VCF (~94k), so the
+## numbers are comparable to EmbedPVP's published Hits@k, which were computed over
+## its whole synthetic genome (~98,194 variants, no variant-effect filter).
+##
+## Differences from analysis_cadd.yml:
+##   - variantEffectFilter  REMOVED  (keeps intronic / intergenic / UTR / non-coding)
+##   - frequencyFilter      REMOVED  (keeps common variants)
+##   - inheritanceFilter    REMOVED  (keeps variants incompatible with every MOI, and
+##                                    stops the output being variant x MOI rows)
+## Everything else — pathogenicitySources, the prioritisers, the scoring — is identical,
+## so the only thing that changes between the two arms is the size of the candidate pool.
+##
+## NOTE: every variant reaching pathogenicityFilter gets a CADD tabix lookup
+## (PathogenicityDataProvider decorates that step and does no variant-effect gating),
+## so this analysis issues ~94k random seeks into the 87 GB whole_genome_SNVs.tsv.gz
+## per case instead of ~500. Budget runtime accordingly.
+---
+analysisMode: PASS_ONLY
+inheritanceModes: {
+  AUTOSOMAL_DOMINANT: 0.1,
+  AUTOSOMAL_RECESSIVE_HOM_ALT: 0.1,
+  AUTOSOMAL_RECESSIVE_COMP_HET: 2.0,
+  X_DOMINANT: 0.1,
+  X_RECESSIVE_HOM_ALT: 0.1,
+  X_RECESSIVE_COMP_HET: 2.0,
+  MITOCHONDRIAL: 0.2
+}
+frequencySources: [
+    UK10K,
+
+    GNOMAD_E_AFR,
+    GNOMAD_E_AMR,
+    GNOMAD_E_EAS,
+    GNOMAD_E_NFE,
+    GNOMAD_E_SAS,
+
+    GNOMAD_G_AFR,
+    GNOMAD_G_AMR,
+    GNOMAD_G_EAS,
+    GNOMAD_G_NFE,
+    GNOMAD_G_SAS
+]
+pathogenicitySources: [ CADD ]
+steps: [
+  geneBlacklistFilter: { },
+  failedVariantFilter: { },
+  alleleBalanceFilter: { },
+    pathogenicityFilter: { keepNonPathogenic: true },
+    omimPrioritiser: { },
+    hiPhivePrioritiser: { }
+]
