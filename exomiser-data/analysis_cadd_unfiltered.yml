@@ -5,10 +5,18 @@
 ## its whole synthetic genome (~98,194 variants, no variant-effect filter).
 ##
 ## Differences from analysis_cadd.yml:
-##   - variantEffectFilter  REMOVED  (keeps intronic / intergenic / UTR / non-coding)
-##   - frequencyFilter      REMOVED  (keeps common variants)
-##   - inheritanceFilter    REMOVED  (keeps variants incompatible with every MOI, and
-##                                    stops the output being variant x MOI rows)
+##   - variantEffectFilter  REMOVED       (keeps intronic / intergenic / UTR / non-coding)
+##   - frequencyFilter      maxFrequency 100.0  (keeps every variant, however common)
+##   - inheritanceFilter    REMOVED       (keeps variants incompatible with every MOI, and
+##                                         stops the output being variant x MOI rows)
+##
+## The frequency filter is *relaxed*, not deleted. Exomiser attaches frequency data via a
+## decorator on that step, and EXOMISER_VARIANT_SCORE is
+## `whiteListed ? 1 : frequencyScore * pathogenicityScore`
+## (VariantEvaluation.java:362). Deleting the step leaves frequencyData empty, so the
+## variant score silently changes meaning between the two arms and they stop being
+## comparable. maxFrequency 100.0 removes nothing (frequencies are percentages) while
+## keeping the score definition identical to the filtered arm.
 ## Everything else — pathogenicitySources, the prioritisers, the scoring — is identical,
 ## so the only thing that changes between the two arms is the size of the candidate pool.
 ##
@@ -47,6 +55,7 @@ steps: [
   geneBlacklistFilter: { },
   failedVariantFilter: { },
   alleleBalanceFilter: { },
+    frequencyFilter: { maxFrequency: 100.0 },
     pathogenicityFilter: { keepNonPathogenic: true },
     omimPrioritiser: { },
     hiPhivePrioritiser: { }
