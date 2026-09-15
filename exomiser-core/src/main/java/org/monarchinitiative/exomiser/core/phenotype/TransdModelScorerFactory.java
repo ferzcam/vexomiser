@@ -39,11 +39,18 @@ public final class TransdModelScorerFactory implements LearnedModelScorerFactory
                 raw.put(id, checkpoint.scoreGeneCase(Integer.toString(id), caseId));
         }
         int missingCount = ids.size() - raw.size();
-        org.slf4j.LoggerFactory.getLogger(TransdModelScorerFactory.class).info(
+        var logger = org.slf4j.LoggerFactory.getLogger(TransdModelScorerFactory.class);
+        logger.info(
                 "TransD native case {}: {} covered genes, {} absent genes in analysis context", caseId, raw.size(), missingCount);
+        if (ids.isEmpty()) {
+            logger.warn("TransD native case {} has no candidate genes to score", caseId);
+            return new TransdModelScorerFactory(checkpoint, caseId, Map.of());
+        }
+        if (raw.isEmpty()) {
+            logger.warn("TransD native case {} has zero covered candidate genes; native compatibility is uniformly zero", caseId);
+        }
         double median = median(new ArrayList<>(raw.values()));
         for (int id : ids) raw.putIfAbsent(id, median);
-        if (raw.isEmpty()) return new TransdModelScorerFactory(checkpoint, caseId, Map.of());
         double min = raw.values().stream().mapToDouble(Double::doubleValue).min().orElseThrow();
         double max = raw.values().stream().mapToDouble(Double::doubleValue).max().orElseThrow();
         Map<Integer, Double> scaled = new HashMap<>();

@@ -41,9 +41,14 @@ public final class PooledGenePhenotypeScorer {
             List<float[]> gene = vectors(annotations.getOrDefault(geneId, List.of()));
             double score = query.isEmpty() || gene.isEmpty() ? 0.0 : bma(query, gene);
             // The reference phenotype table formats each score to six decimals before combination.
-            scores.put(geneId, BigDecimal.valueOf(score).setScale(6, RoundingMode.HALF_EVEN).doubleValue());
+            scores.put(geneId, sixDecimal(score));
         }
         return scores;
+    }
+
+    static double sixDecimal(double score) {
+        if (!Double.isFinite(score)) throw new IllegalArgumentException("Non-finite pooled phenotype score");
+        return new BigDecimal(score).setScale(6, RoundingMode.HALF_EVEN).doubleValue();
     }
 
     private List<float[]> vectors(List<String> ids) {

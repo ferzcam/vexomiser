@@ -61,6 +61,25 @@ class TransdCheckpointTest {
         assertEquals(false, checkpoint.hasCase("PAVS:UNKNOWN"));
     }
 
+    @Test
+    void rejectsInverseTripleManifest() throws IOException {
+        fixture("1.0,0.0", "0.0,0.0", "0.0,0.0", "0.0,0.0",
+                "0.0,0.0", "0.0,0.0");
+        Path manifest = directory.resolve("manifest.properties");
+        Files.writeString(manifest, Files.readString(manifest).replace(
+                "inverse_triples=false", "inverse_triples=true"));
+        assertThrows(IOException.class, () -> TransdCheckpoint.load(directory));
+    }
+
+    @Test
+    void rejectsModifiedWeightsByChecksum() throws IOException {
+        fixture("1.0,0.0", "0.0,0.0", "0.0,0.0", "0.0,0.0",
+                "0.0,0.0", "0.0,0.0");
+        Path entities = directory.resolve("entities.tsv");
+        Files.writeString(entities, Files.readString(entities).replace("1.0,0.0", "0.5,0.0"));
+        assertThrows(IOException.class, () -> TransdCheckpoint.load(directory));
+    }
+
     private void fixture(String gene, String geneProjection, String patient,
                          String patientProjection, String relation, String relationProjection)
             throws IOException {
@@ -75,7 +94,7 @@ class TransdCheckpointTest {
                 "entity_dimension=2\nrelation_dimension=2\nentity_count=2\nrelation_count=1\n" +
                 "entities_sha256=" + sha256(directory.resolve("entities.tsv")) + "\n" +
                 "relations_sha256=" + sha256(directory.resolve("relations.tsv")) + "\n" +
-                "norm_p=2\npower_norm=true\nprojection_maxnorm=1\n" +
+                "norm_p=2\npower_norm=true\nprojection_maxnorm=1\ninverse_triples=false\n" +
                 "predict_with_sigmoid=false\n" +
                 "association_relation=http://mowl.borg/associated_with\n");
     }

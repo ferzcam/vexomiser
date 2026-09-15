@@ -148,6 +148,6 @@ public final class Table3WeightedVariantResultsWriter implements ResultsWriter {
     /** The historical per-gene phenotype TSV emits f"{score:.6f}" before the combiner parses it. */
     static double sixDecimal(double score) {
         if (!Double.isFinite(score)) throw new IllegalArgumentException("Non-finite phenotype score");
-        return BigDecimal.valueOf(score).setScale(6, RoundingMode.HALF_EVEN).doubleValue();
+        return new BigDecimal(score).setScale(6, RoundingMode.HALF_EVEN).doubleValue();
     }
 }

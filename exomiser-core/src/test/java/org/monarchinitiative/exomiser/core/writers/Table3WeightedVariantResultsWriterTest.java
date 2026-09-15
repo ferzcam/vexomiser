@@ -103,6 +103,10 @@ class Table3WeightedVariantResultsWriterTest {
     void phenotypeTablePrecisionAppliesToNegativeTransdScores() {
         assertEquals(-0.123457, Table3WeightedVariantResultsWriter.sixDecimal(-0.1234567));
         assertEquals(0.123457, Table3WeightedVariantResultsWriter.sixDecimal(0.1234567));
+        // 0.0000025 is binary-above the exact halfway point. Python's .6f rounds the
+        // binary value to 0.000003; BigDecimal.valueOf would round the shortest decimal
+        // representation's even tie to 0.000002.
+        assertEquals(0.000003, Table3WeightedVariantResultsWriter.sixDecimal(0.0000025));
     }
 
     private static AnalysisResults resultsWithNativeScore(double score) {

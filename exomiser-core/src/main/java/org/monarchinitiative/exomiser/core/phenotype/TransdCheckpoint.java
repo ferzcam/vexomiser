@@ -34,6 +34,7 @@ public final class TransdCheckpoint {
         require(manifest, "norm_p", "2");
         require(manifest, "power_norm", "true");
         require(manifest, "projection_maxnorm", "1");
+        require(manifest, "inverse_triples", "false");
         require(manifest, "predict_with_sigmoid", "false");
         int entityDimension = positiveInt(manifest, "entity_dimension");
         int relationDimension = positiveInt(manifest, "relation_dimension");

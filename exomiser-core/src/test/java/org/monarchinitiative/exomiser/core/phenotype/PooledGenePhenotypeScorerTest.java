@@ -25,4 +25,9 @@ class PooledGenePhenotypeScorerTest {
         assertEquals(0.673294, scores.get("1"), 1e-6);
         assertEquals(0.0, scores.get("2"));
     }
+
+    @Test
+    void sixDecimalRoundingUsesExactBinaryValue() {
+        assertEquals(0.000003, PooledGenePhenotypeScorer.sixDecimal(0.0000025));
+    }
 }
