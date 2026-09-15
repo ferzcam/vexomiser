@@ -1,6 +1,7 @@
 package org.monarchinitiative.exomiser.core.phenotype;
 
 import java.util.List;
+import org.monarchinitiative.exomiser.core.model.Gene;
 
 /**
  * Factory for creating {@link ModelScorer} instances given the phenotype query context.
@@ -20,6 +21,9 @@ import java.util.List;
  * via Spring configuration — no changes to the prioritisers themselves are required.
  */
 public interface ModelScorerFactory {
+
+    /** Bind an immutable scorer to the candidate genes of one analysis invocation. */
+    default ModelScorerFactory withCandidateGenes(List<Gene> genes) { return this; }
 
     /**
      * Create a scorer for a single-species cross comparison (e.g. HP→MP for mouse models).

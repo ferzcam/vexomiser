@@ -78,4 +78,12 @@ class ResultsWriterFactoryTest {
         assertThat(result, instanceOf(ParquetResultsWriter.class));
     }
 
+    @Test
+    void learnedFormatsSelectTheirIndependentWriters() {
+        assertThat(ResultsWriterFactory.getResultsWriter(OutputFormat.TSV_TABLE3_WEIGHTED),
+                instanceOf(Table3WeightedVariantResultsWriter.class));
+        assertThat(ResultsWriterFactory.getResultsWriter(OutputFormat.TSV_NATIVE_PHENOTYPE),
+                instanceOf(NativePhenotypeEvidenceResultsWriter.class));
+    }
+
 }

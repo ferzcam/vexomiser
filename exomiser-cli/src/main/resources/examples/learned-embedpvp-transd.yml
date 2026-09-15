@@ -1,0 +1,27 @@
+sample:
+  genomeAssembly: GRCh38
+  vcf: /data/case.vcf.gz
+  proband: proband
+  hpoIds: [HP:0001250, HP:0004322]
+analysis:
+  analysisMode: PASS_ONLY
+  inheritanceModes: {AUTOSOMAL_DOMINANT: 0.1}
+  frequencySources: [GNOMAD_G_NFE]
+  pathogenicitySources: [CADD]
+  phenotypeScorer:
+    method: EMBEDPVP_TRANSD
+    transdBundle: /models/embedpvp/case-bundle
+    caseId: case_001
+  weightedVariants:
+    phenotypeWeight: 0.61
+    pathogenicityMissing: ZERO
+    phenotypeMissing: MEDIAN
+  steps:
+    - failedVariantFilter: {}
+    - frequencyFilter: {maxFrequency: 0.1}
+    - inheritanceFilter: {}
+    - hiPhivePrioritiser: {runParams: mouse}
+outputOptions:
+  outputDirectory: /results
+  outputFileName: case_001
+  outputFormats: [TSV_VARIANT, TSV_GENE, TSV_NATIVE_PHENOTYPE, TSV_TABLE3_WEIGHTED]
