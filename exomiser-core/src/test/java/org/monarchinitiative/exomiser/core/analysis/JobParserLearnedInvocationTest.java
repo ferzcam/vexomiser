@@ -23,7 +23,7 @@ class JobParserLearnedInvocationTest {
     void yamlSelectorReachesNativePrioritiserInvocation() throws Exception {
         Path embeddings = temporary.resolve("embeddings.tsv");
         Files.writeString(embeddings, "http://purl.obolibrary.org/obo/HP_0001156\t1,0\n" +
-                "http://purl.obolibrary.org/obo/MP_0000001\t1,0\n");
+                "http://purl.obolibrary.org/obo/MP_0000031\t1,0\n");
         String yaml = """
                 sample:
                   genomeAssembly: GRCh37
@@ -43,11 +43,37 @@ class JobParserLearnedInvocationTest {
                 TestPriorityServiceFactory.testOntologyService());
         Analysis analysis = parser.parseAnalysis(job);
         assertEquals(LearnedScoringOptions.Method.INDIGENA, analysis.learnedScoringOptions().method());
-        HiPhivePriority prioritiser = (HiPhivePriority) analysis.mainPrioritiser();
-        assertNotNull(prioritiser);
+        HiPhivePriority prioritiser = assertInstanceOf(HiPhivePriority.class, analysis.mainPrioritiser());
         var factoryField = HiPhivePriority.class.getDeclaredField("modelScorerFactory");
         factoryField.setAccessible(true);
         assertInstanceOf(IndigenaModelScorerFactory.class, factoryField.get(prioritiser));
-        assertEquals(1, prioritiser.prioritise(List.of("HP:0001156"), List.of(new Gene("FGFR2", 2263))).count());
+        var result = prioritiser.prioritise(List.of("HP:0001156"), List.of(new Gene("FGFR2", 2263)))
+                .findFirst().orElseThrow();
+        // MP:0000031 is present in the test FGFR2 mouse model. The sigmoid(dot=1) learned
+        // match survives the CLI JobProto -> JobParser -> native HiPhive invocation path.
+        assertEquals(1.0 / (1.0 + Math.exp(-1)), result.mouseScore(), 1e-6);
+    }
+
+    @Test
+    void learnedSelectorWithoutCompatiblePrioritiserFailsInsteadOfBeingIgnored() {
+        String yaml = """
+                sample:
+                  genomeAssembly: GRCh37
+                  vcf: case.vcf
+                  hpoIds: [HP:0001156]
+                analysis:
+                  phenotypeScorer:
+                    method: INDIGENA
+                    embeddings: /models/emb.tsv
+                  steps:
+                    - phenixPrioritiser: {}
+                """;
+        var service = TestPriorityServiceFactory.testPriorityService();
+        var parser = new JobParser(new GenomeAnalysisServiceProvider(TestFactory.buildDefaultHg19GenomeAnalysisService()),
+                new PriorityFactoryImpl(service, DataMatrix.empty(), temporary),
+                TestPriorityServiceFactory.testOntologyService());
+        var exception = assertThrows(IllegalArgumentException.class,
+                () -> parser.parseAnalysis(JobReader.readJob(yaml)));
+        assertTrue(exception.getMessage().contains("hiPhivePrioritiser or phivePrioritiser"));
     }
 }

@@ -187,6 +187,11 @@ public class JobParser {
         // TODO: Should this be an AnalysisProtoConverter class exposed via AnalysisBuilder.from(AnalysisProto.Analysis protoAnalysis)
         //  so that the external API remains consistent?
         LearnedScoringOptions learnedOptions = LearnedScoringOptions.from(protoAnalysis);
+        if (learnedOptions.method() != LearnedScoringOptions.Method.PHENODIGM &&
+                protoAnalysis.getStepsList().stream().noneMatch(step -> step.hasHiPhivePrioritiser() || step.hasPhivePrioritiser())) {
+            throw new IllegalArgumentException(learnedOptions.method() +
+                    " requires a hiPhivePrioritiser or phivePrioritiser analysis step; other steps do not consume this scorer");
+        }
         AnalysisBuilder analysisBuilder = new AnalysisBuilder(genomeAnalysisServiceProvider, prioritiserFactory, ontologyService)
                 .inheritanceModes(inheritanceModeOptions)
                 .analysisMode(parseAnalysisMode(protoAnalysis.getAnalysisMode()))

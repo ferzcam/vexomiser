@@ -29,7 +29,7 @@ import java.math.RoundingMode;
 public final class Table3WeightedVariantResultsWriter implements ResultsWriter {
     private static final CSVFormat FORMAT = CSVFormat.TDF.builder()
             .setRecordSeparator("\n")
-            .setHeader("CASE_ID", "SCORER", "CANDIDATE_SOURCE", "CONTIG", "START", "REF", "ALT",
+            .setHeader("CASE_ID", "SAMPLE_PROBAND", "SAMPLE_HPO_IDS", "SCORER", "CANDIDATE_SOURCE", "CONTIG", "START", "REF", "ALT",
                     "ENTREZ_GENE_IDS", "RAW_MS", "RAW_GP_MAX_PATH", "MS_MISSING", "GP_MISSING",
                     "IMPUTED_MS", "IMPUTED_GP", "NORMALIZED_MS", "NORMALIZED_GP", "WEIGHT",
                     "COMBINED_SCORE", "VARIANT_RANK_MID", "VARIANT_RANK_STRICT",
@@ -69,7 +69,9 @@ public final class Table3WeightedVariantResultsWriter implements ResultsWriter {
         try (CSVPrinter printer = new CSVPrinter(output, FORMAT)) {
             for (var rank : ranks) {
                 var key = rank.key();
-                printer.printRecord(options.caseId(), options.method(), "GeneScoreRanker.rankedVariants TSV_VARIANT",
+                printer.printRecord(options.caseId(), results.sample().probandSampleName(),
+                        String.join(",", results.sample().hpoIds()), options.method(),
+                        "GeneScoreRanker.rankedVariants TSV_VARIANT",
                         key.contig(), key.start(), key.ref(), key.alt(),
                         String.join(",", rank.geneIds().stream().sorted().toList()),
                         rank.rawPhenotypeScore(), rank.rawPathogenicityScore(),

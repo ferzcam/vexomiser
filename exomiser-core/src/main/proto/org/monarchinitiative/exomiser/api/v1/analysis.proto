@@ -52,7 +52,7 @@ message PhenotypeScorerOptions {
 }
 
 message WeightedVariantOptions {
-    double phenotype_weight = 1;
+    optional double phenotype_weight = 1;
     string gene_phenotypes = 2;
     string patient_hpo = 3; // optional controlled case HPO list, one ID per line
     string pathogenicity_missing = 4; // ZERO (default) or MEDIAN
@@ -93,4 +93,3 @@ message AnalysisStep {
         ExomeWalkerPrioritiser exome_walker_prioritiser = 16;
     }
 }
-

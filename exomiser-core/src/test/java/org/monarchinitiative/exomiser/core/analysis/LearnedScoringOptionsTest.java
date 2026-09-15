@@ -43,4 +43,19 @@ class LearnedScoringOptionsTest {
                         .setTransdBundle("/bundle")).build();
         assertThrows(IllegalArgumentException.class, () -> LearnedScoringOptions.from(incomplete));
     }
+
+    @Test
+    void weightedModeRequiresPresentWeightAndAcceptsExplicitZero() {
+        var scorer = AnalysisProto.PhenotypeScorerOptions.newBuilder()
+                .setMethod("INDIGENA").setEmbeddings("/models/emb.tsv").setCaseId("case_1");
+        var weighted = AnalysisProto.WeightedVariantOptions.newBuilder()
+                .setGenePhenotypes("/data/gene.csv");
+        var absent = AnalysisProto.Analysis.newBuilder().setPhenotypeScorer(scorer)
+                .setWeightedVariants(weighted).build();
+        assertThrows(IllegalArgumentException.class, () -> LearnedScoringOptions.from(absent));
+        var zeroBuilder = absent.toBuilder();
+        zeroBuilder.getWeightedVariantsBuilder().setPhenotypeWeight(0.0);
+        var zero = zeroBuilder.build();
+        assertEquals(0.0, LearnedScoringOptions.from(zero).weighted().phenotypeWeight());
+    }
 }

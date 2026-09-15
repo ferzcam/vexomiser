@@ -18,7 +18,7 @@ import java.util.List;
 /** Auditable raw model compatibility rows for native phenotype scorer substitution. */
 public final class NativePhenotypeEvidenceResultsWriter implements ResultsWriter {
     private static final CSVFormat FORMAT = CSVFormat.TDF.builder().setRecordSeparator("\n")
-            .setHeader("CASE_ID", "SCORER", "ENTREZ_GENE_ID", "GENE_SYMBOL", "MODEL_ID", "ORGANISM",
+            .setHeader("CASE_ID", "SAMPLE_PROBAND", "SAMPLE_HPO_IDS", "SCORER", "ENTREZ_GENE_ID", "GENE_SYMBOL", "MODEL_ID", "ORGANISM",
                     "RAW_MODEL_COMPATIBILITY", "RAW_TRANSD_TRIPLE", "NATIVE_PRIORITY_RESULT_SCORE",
                     "MODEL_EVIDENCE_MISSING", "TRANSD_GENE_MISSING", "EMBEDDINGS", "TRANSD_BUNDLE",
                     "EMBEDDINGS_SHA256", "TRANSD_BUNDLE_SHA256")
@@ -56,11 +56,13 @@ public final class NativePhenotypeEvidenceResultsWriter implements ResultsWriter
                         ? checkpoint.scoreGeneCase(id, options.caseId()) : null;
                 boolean geneMissing = checkpoint != null && !checkpoint.hasGene(id);
                 if (matches.isEmpty()) {
-                    printer.printRecord(options.caseId(), options.method(), id, gene.geneSymbol(), "", "", "", triple,
+                    printer.printRecord(options.caseId(), results.sample().probandSampleName(),
+                            String.join(",", results.sample().hpoIds()), options.method(), id, gene.geneSymbol(), "", "", "", triple,
                             nativeScore, true, geneMissing, options.embeddings(), options.transdBundle(), embeddingsDigest, bundleDigest);
                 } else {
                     for (var match : matches) {
-                        printer.printRecord(options.caseId(), options.method(), id, gene.geneSymbol(), match.model().id(),
+                        printer.printRecord(options.caseId(), results.sample().probandSampleName(),
+                                String.join(",", results.sample().hpoIds()), options.method(), id, gene.geneSymbol(), match.model().id(),
                                 match.organism(), match.score(), triple, nativeScore, false,
                                 geneMissing, options.embeddings(), options.transdBundle(), embeddingsDigest, bundleDigest);
                     }

@@ -50,6 +50,8 @@ public record LearnedScoringOptions(Method method, Path embeddings, Path transdB
                 throw new IllegalArgumentException("INDIGENA weightedVariants requires genePhenotypes");
             if (caseId.isBlank())
                 throw new IllegalArgumentException("weightedVariants requires phenotypeScorer.caseId for output provenance");
+            if (!options.hasPhenotypeWeight())
+                throw new IllegalArgumentException("weightedVariants requires an explicit phenotypeWeight (zero is valid)");
             double weight = options.getPhenotypeWeight();
             if (!Double.isFinite(weight) || weight < 0 || weight > 1)
                 throw new IllegalArgumentException("phenotypeWeight must be within [0,1]");
