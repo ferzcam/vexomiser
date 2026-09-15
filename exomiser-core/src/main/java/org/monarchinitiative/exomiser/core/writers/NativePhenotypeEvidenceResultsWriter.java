@@ -6,6 +6,7 @@ import org.monarchinitiative.exomiser.core.analysis.AnalysisResults;
 import org.monarchinitiative.exomiser.core.prioritisers.HiPhivePriorityResult;
 import org.monarchinitiative.exomiser.core.prioritisers.PhivePriorityResult;
 import org.monarchinitiative.exomiser.core.prioritisers.model.GeneModelPhenotypeMatch;
+import org.monarchinitiative.exomiser.core.prioritisers.model.GeneOrthologModel;
 import org.monarchinitiative.exomiser.core.phenotype.TransdCheckpoint;
 import org.monarchinitiative.exomiser.core.phenotype.ScoringResourceDigest;
 
@@ -50,6 +51,11 @@ public final class NativePhenotypeEvidenceResultsWriter implements ResultsWriter
                 var phive = gene.getPriorityResult(PhivePriorityResult.class);
                 List<GeneModelPhenotypeMatch> matches = hiPhive != null ? hiPhive.phenotypeEvidence()
                         : phive != null && phive.geneModelPhenotypeMatch() != null ? List.of(phive.geneModelPhenotypeMatch()) : List.of();
+                // PHIVE uses a synthetic 0.6 mouse-model match when no database model exists.
+                // It affects native ranking but is not raw model compatibility evidence.
+                if (hiPhive == null && phive != null && matches.size() == 1 && isPhiveNoMouseModel(matches.getFirst())) {
+                    matches = List.of();
+                }
                 double nativeScore = hiPhive != null ? hiPhive.score() : phive != null ? phive.score() : 0;
                 String id = gene.geneIdentifier().entrezId();
                 Double triple = checkpoint != null && checkpoint.hasGene(id) && checkpoint.hasCase(options.caseId())
@@ -70,5 +76,15 @@ public final class NativePhenotypeEvidenceResultsWriter implements ResultsWriter
             }
         } catch (IOException e) { throw new IllegalStateException("Unable to format native phenotype evidence", e); }
         return output.toString();
+    }
+
+    private static boolean isPhiveNoMouseModel(GeneModelPhenotypeMatch match) {
+        return match.model() instanceof GeneOrthologModel model
+                && model.modelId().isEmpty()
+                && model.modelGeneId().isEmpty()
+                && model.modelGeneSymbol().isEmpty()
+                && model.phenotypeIds().isEmpty()
+                && match.bestPhenotypeMatches().isEmpty()
+                && match.score() == (double) 0.6f;
     }
 }
