@@ -101,7 +101,7 @@ public class PhivePriority implements Prioritiser<PhivePriorityResult> {
                 .filter(model -> wantedGeneIds.contains(model.entrezGeneId()))
                 .collect(ImmutableSet.toImmutableSet());
 
-        List<GeneModelPhenotypeMatch> scoredModels = scoreModels(hpoPhenotypeTerms, humanMousePhenotypeMatcher, modelsToScore);
+        List<GeneModelPhenotypeMatch> scoredModels = scoreModels(hpoPhenotypeTerms, humanMousePhenotypeMatcher, modelsToScore, modelScorerFactory.withCandidateGenes(genes));
 
         //n.b. this will contain models but with a phenotype score of zero
         Map<Integer, Optional<GeneModelPhenotypeMatch>> geneModelPhenotypeMatches = scoredModels.parallelStream()
@@ -131,10 +131,10 @@ public class PhivePriority implements Prioritiser<PhivePriorityResult> {
         return modelPhenotypeMatch -> new PhivePriorityResult(modelPhenotypeMatch.entrezGeneId(), modelPhenotypeMatch.humanGeneSymbol(), modelPhenotypeMatch.score(), modelPhenotypeMatch);
     }
 
-    private List<GeneModelPhenotypeMatch> scoreModels(List<PhenotypeTerm> queryTerms, PhenotypeMatcher organismPhenotypeMatcher, Collection<GeneModel> models) {
+    private List<GeneModelPhenotypeMatch> scoreModels(List<PhenotypeTerm> queryTerms, PhenotypeMatcher organismPhenotypeMatcher, Collection<GeneModel> models, ModelScorerFactory scopedScorerFactory) {
         Organism organism = organismPhenotypeMatcher.getOrganism();
 
-        ModelScorer<GeneModel> modelScorer = modelScorerFactory.forSingleCrossSpecies(queryTerms, organismPhenotypeMatcher);
+        ModelScorer<GeneModel> modelScorer = scopedScorerFactory.forSingleCrossSpecies(queryTerms, organismPhenotypeMatcher);
 
         logger.info("Scoring {} models", organism);
         Instant timeStart = Instant.now();

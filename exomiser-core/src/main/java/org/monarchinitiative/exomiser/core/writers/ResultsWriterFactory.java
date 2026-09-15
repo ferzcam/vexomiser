@@ -52,6 +52,8 @@ public class ResultsWriterFactory {
             case JSON -> new JsonResultsWriter();
             case PARQUET -> new ParquetResultsWriter();
             case HTML -> new HtmlResultsWriter();
+            case TSV_TABLE3_WEIGHTED -> new Table3WeightedVariantResultsWriter();
+            case TSV_NATIVE_PHENOTYPE -> new NativePhenotypeEvidenceResultsWriter();
         };
     }
 

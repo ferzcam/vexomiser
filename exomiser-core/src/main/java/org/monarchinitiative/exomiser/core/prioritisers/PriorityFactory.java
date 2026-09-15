@@ -26,6 +26,7 @@
 package org.monarchinitiative.exomiser.core.prioritisers;
 
 import java.util.List;
+import org.monarchinitiative.exomiser.core.phenotype.ModelScorerFactory;
 
 /**
  *
@@ -42,5 +43,13 @@ public interface PriorityFactory {
     ExomeWalkerPriority makeExomeWalkerPrioritiser(List<Integer> entrezSeedGenes);
 
     HiPhivePriority makeHiPhivePrioritiser(HiPhiveOptions hiPhiveOptions);
+
+    default PhivePriority makePhivePrioritiser(ModelScorerFactory scorerFactory) {
+        throw new UnsupportedOperationException("This priority factory cannot configure learned phenotype scoring");
+    }
+
+    default HiPhivePriority makeHiPhivePrioritiser(HiPhiveOptions options, ModelScorerFactory scorerFactory) {
+        throw new UnsupportedOperationException("This priority factory cannot configure learned phenotype scoring");
+    }
 
 }

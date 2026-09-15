@@ -101,8 +101,9 @@ public class HiPhivePriority implements Prioritiser<HiPhivePriorityResult> {
         }
         List<PhenotypeTerm> hpoPhenotypeTerms = priorityService.makePhenotypeTermsFromHpoIds(hpoIds);
 
+        ModelScorerFactory scopedScorerFactory = modelScorerFactory.withCandidateGenes(genes);
         ListMultimap<Integer, GeneModelPhenotypeMatch> allScoredModelsByGene = makeGeneModelsForOrganisms(hpoPhenotypeTerms, options
-                .getOrganismsToRun(), genes);
+                .getOrganismsToRun(), genes, scopedScorerFactory);
 
         HiPhiveProteinInteractionScorer ppiScorer = makeHiPhiveProteinInteractionScorer(allScoredModelsByGene, options.runPpi());
 
@@ -160,7 +161,7 @@ public class HiPhivePriority implements Prioritiser<HiPhivePriorityResult> {
         return HiPhiveProteinInteractionScorer.empty();
     }
 
-    private ListMultimap<Integer, GeneModelPhenotypeMatch> makeGeneModelsForOrganisms(List<PhenotypeTerm> hpoPhenotypeTerms, Set<Organism> organismsToCompare, List<Gene> genes) {
+    private ListMultimap<Integer, GeneModelPhenotypeMatch> makeGeneModelsForOrganisms(List<PhenotypeTerm> hpoPhenotypeTerms, Set<Organism> organismsToCompare, List<Gene> genes, ModelScorerFactory scopedScorerFactory) {
 
         //CAUTION!! this must always run in order that the best score is set - HUMAN runs first as we are comparing HP to other phenotype ontology terms.
         PhenotypeMatcher referenceOrganismPhenotypeMatcher = priorityService.getPhenotypeMatcherForOrganism(hpoPhenotypeTerms, Organism.HUMAN);
@@ -180,9 +181,9 @@ public class HiPhivePriority implements Prioritiser<HiPhivePriorityResult> {
                     .filter(model -> wantedGeneIds.contains(model.entrezGeneId()))
                     .collect(toUnmodifiableSet());
 
-            List<GeneModelPhenotypeMatch> geneModelPhenotypeMatches = scoreModels(hpoPhenotypeTerms, referenceQueryPhenotypeMatch, organismPhenotypeMatcher, modelsToScore);
+            List<GeneModelPhenotypeMatch> geneModelPhenotypeMatches = scoreModels(hpoPhenotypeTerms, referenceQueryPhenotypeMatch, organismPhenotypeMatcher, modelsToScore, scopedScorerFactory);
             for (GeneModelPhenotypeMatch scoredModel : geneModelPhenotypeMatches) {
-                if (scoredModel.score() > 0) {
+                if (scoredModel.score() > 0 || scopedScorerFactory instanceof LearnedModelScorerFactory) {
                     scoredModelsByGene.put(scoredModel.entrezGeneId(), scoredModel);
                 }
             }
@@ -212,10 +213,10 @@ public class HiPhivePriority implements Prioritiser<HiPhivePriorityResult> {
     // against all possible models (disease, mouse, fish), whereas in Phive we're only comparing against mouse.
     // For HiPhive the referenceQueryPhenotypeMatch is going to be an HPO self-hit for every term in the query set so the
     // scoreModelPhenotypeMatch uses hpoIds.size() as the numMatchedQueryPhenotypes.
-    private List<GeneModelPhenotypeMatch> scoreModels(List<PhenotypeTerm> queryTerms, QueryPhenotypeMatch referenceQueryPhenotypeMatch, PhenotypeMatcher organismPhenotypeMatcher, Collection<GeneModel> models) {
+    private List<GeneModelPhenotypeMatch> scoreModels(List<PhenotypeTerm> queryTerms, QueryPhenotypeMatch referenceQueryPhenotypeMatch, PhenotypeMatcher organismPhenotypeMatcher, Collection<GeneModel> models, ModelScorerFactory scopedScorerFactory) {
         Organism organism = organismPhenotypeMatcher.getOrganism();
 
-        ModelScorer<GeneModel> modelScorer = modelScorerFactory.forMultiCrossSpecies(queryTerms, referenceQueryPhenotypeMatch, organismPhenotypeMatcher);
+        ModelScorer<GeneModel> modelScorer = scopedScorerFactory.forMultiCrossSpecies(queryTerms, referenceQueryPhenotypeMatch, organismPhenotypeMatcher);
 
         logger.debug("Scoring {} models", organism);
         Instant timeStart = Instant.now();

@@ -15,7 +15,7 @@ import java.util.List;
  * <p>Usage: load embeddings once at application startup and inject this factory
  * wherever a {@link ModelScorerFactory} is expected.
  */
-public class IndigenaModelScorerFactory implements ModelScorerFactory {
+public class IndigenaModelScorerFactory implements LearnedModelScorerFactory {
 
     private final IndigenaEmbeddings embeddings;
 

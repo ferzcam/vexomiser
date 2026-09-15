@@ -33,6 +33,11 @@ import org.monarchinitiative.exomiser.core.model.GeneticInterval;
 import org.monarchinitiative.exomiser.core.model.frequency.FrequencySource;
 import org.monarchinitiative.exomiser.core.model.pathogenicity.PathogenicitySource;
 import org.monarchinitiative.exomiser.core.phenotype.service.OntologyService;
+import org.monarchinitiative.exomiser.core.phenotype.IndigenaEmbeddings;
+import org.monarchinitiative.exomiser.core.phenotype.IndigenaModelScorerFactory;
+import org.monarchinitiative.exomiser.core.phenotype.ModelScorerFactory;
+import org.monarchinitiative.exomiser.core.phenotype.TransdCheckpoint;
+import org.monarchinitiative.exomiser.core.phenotype.TransdModelScorerFactory;
 import org.monarchinitiative.exomiser.core.prioritisers.HiPhiveOptions;
 import org.monarchinitiative.exomiser.core.prioritisers.PriorityFactory;
 import org.monarchinitiative.exomiser.core.prioritisers.PriorityType;
@@ -42,6 +47,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.nio.file.Paths;
+import java.io.IOException;
 import java.util.*;
 import java.util.Map.Entry;
 
@@ -180,17 +186,36 @@ public class JobParser {
         Set<PathogenicitySource> pathogenicitySources = parsePathogenicitySources(protoAnalysis.getPathogenicitySourcesList());
         // TODO: Should this be an AnalysisProtoConverter class exposed via AnalysisBuilder.from(AnalysisProto.Analysis protoAnalysis)
         //  so that the external API remains consistent?
+        LearnedScoringOptions learnedOptions = LearnedScoringOptions.from(protoAnalysis);
         AnalysisBuilder analysisBuilder = new AnalysisBuilder(genomeAnalysisServiceProvider, prioritiserFactory, ontologyService)
                 .inheritanceModes(inheritanceModeOptions)
                 .analysisMode(parseAnalysisMode(protoAnalysis.getAnalysisMode()))
                 .frequencySources(frequencySources)
-                .pathogenicitySources(pathogenicitySources);
+                .pathogenicitySources(pathogenicitySources)
+                .learnedScoring(learnedOptions, modelScorerFactory(learnedOptions));
 
         for (AnalysisProto.AnalysisStep analysisStep : protoAnalysis.getStepsList()) {
             addAnalysisStep(analysisBuilder, inheritanceModeOptions, frequencySources, pathogenicitySources, analysisStep);
         }
 
         return analysisBuilder.build();
+    }
+
+    private ModelScorerFactory modelScorerFactory(LearnedScoringOptions options) {
+        try {
+            return switch (options.method()) {
+                case PHENODIGM -> null;
+                case INDIGENA -> new IndigenaModelScorerFactory(IndigenaEmbeddings.load(options.embeddings()));
+                case EMBEDPVP_TRANSD -> {
+                    TransdCheckpoint checkpoint = TransdCheckpoint.load(options.transdBundle());
+                    if (!checkpoint.hasCase(options.caseId()))
+                        throw new IllegalArgumentException("TransD bundle has no case entity: " + options.caseId());
+                    yield new TransdModelScorerFactory(checkpoint, options.caseId());
+                }
+            };
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Unable to load " + options.method() + " model resources", e);
+        }
     }
 
     private InheritanceModeOptions inheritanceModeOptions(Map<String, Float> inheritanceModesMap) {

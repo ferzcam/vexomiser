@@ -26,6 +26,7 @@
 package org.monarchinitiative.exomiser.core.prioritisers;
 
 import org.monarchinitiative.exomiser.core.prioritisers.service.PriorityService;
+import org.monarchinitiative.exomiser.core.phenotype.ModelScorerFactory;
 import org.monarchinitiative.exomiser.core.prioritisers.util.DataMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,6 +74,11 @@ public class PriorityFactoryImpl implements PriorityFactory {
     }
 
     @Override
+    public PhivePriority makePhivePrioritiser(ModelScorerFactory scorerFactory) {
+        return new PhivePriority(priorityService, scorerFactory);
+    }
+
+    @Override
     public ExomeWalkerPriority makeExomeWalkerPrioritiser(List<Integer> entrezSeedGenes) {
         return new ExomeWalkerPriority(randomWalkMatrix, entrezSeedGenes);
     }
@@ -80,6 +86,11 @@ public class PriorityFactoryImpl implements PriorityFactory {
     @Override
     public HiPhivePriority makeHiPhivePrioritiser(HiPhiveOptions hiPhiveOptions) {
         return new HiPhivePriority(hiPhiveOptions, randomWalkMatrix, priorityService);
+    }
+
+    @Override
+    public HiPhivePriority makeHiPhivePrioritiser(HiPhiveOptions options, ModelScorerFactory scorerFactory) {
+        return new HiPhivePriority(options, randomWalkMatrix, priorityService, scorerFactory);
     }
 
 }

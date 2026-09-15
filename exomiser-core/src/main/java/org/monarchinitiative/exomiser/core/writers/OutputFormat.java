@@ -42,7 +42,9 @@ public enum OutputFormat {
     TSV_GENE("genes.tsv"),
     TSV_VARIANT("variants.tsv"),
     JSON("jsonl"),
-    PARQUET("parquet");
+    PARQUET("parquet"),
+    TSV_TABLE3_WEIGHTED("table3-weighted.variants.tsv"),
+    TSV_NATIVE_PHENOTYPE("native-phenotype.tsv");
 
     private static final Logger logger = LoggerFactory.getLogger(OutputFormat.class);
 
@@ -63,6 +65,8 @@ public enum OutputFormat {
             case "VCF" -> OutputFormat.VCF;
             case "JSON" -> OutputFormat.JSON;
             case "PARQUET" -> OutputFormat.PARQUET;
+            case "TSV_TABLE3_WEIGHTED", "TSV-TABLE3-WEIGHTED" -> OutputFormat.TSV_TABLE3_WEIGHTED;
+            case "TSV_NATIVE_PHENOTYPE", "TSV-NATIVE-PHENOTYPE" -> OutputFormat.TSV_NATIVE_PHENOTYPE;
             case "HTML" -> OutputFormat.HTML;
             default -> {
                 logger.info("Unrecognised output format '{}'. Valid options are {} - defaulting to {}", value, List.of(OutputFormat

@@ -62,7 +62,8 @@ public record Analysis(
         Set<FrequencySource> frequencySources,
         Set<PathogenicitySource> pathogenicitySources,
         @JsonProperty("steps")
-        List<AnalysisStep> analysisSteps
+        List<AnalysisStep> analysisSteps,
+        LearnedScoringOptions learnedScoringOptions
 ) {
 
     private static final Logger logger = LoggerFactory.getLogger(Analysis.class);
@@ -74,6 +75,7 @@ public record Analysis(
         frequencySources = (frequencySources == null || frequencySources.isEmpty()) ? Collections.emptySet() : Collections.unmodifiableSet(EnumSet.copyOf(frequencySources));
         pathogenicitySources = (pathogenicitySources == null || pathogenicitySources.isEmpty()) ? Collections.emptySet() : Collections.unmodifiableSet(EnumSet.copyOf(pathogenicitySources));
         analysisSteps = List.copyOf(analysisSteps);
+        learnedScoringOptions = Objects.requireNonNullElseGet(learnedScoringOptions, LearnedScoringOptions::defaults);
     }
 
     @JsonIgnore
@@ -127,7 +129,8 @@ public record Analysis(
                 .analysisMode(analysisMode)
                 .frequencySources(frequencySources)
                 .pathogenicitySources(pathogenicitySources)
-                .steps(analysisSteps);
+                .steps(analysisSteps)
+                .learnedScoringOptions(learnedScoringOptions);
     }
 
     public static class Builder {
@@ -137,6 +140,7 @@ public record Analysis(
         private Set<FrequencySource> frequencySources = EnumSet.noneOf(FrequencySource.class);
         private Set<PathogenicitySource> pathogenicitySources = EnumSet.noneOf(PathogenicitySource.class);
         private List<AnalysisStep> analysisSteps = new ArrayList<>();
+        private LearnedScoringOptions learnedScoringOptions = LearnedScoringOptions.defaults();
 
         public Analysis build() {
             return new Analysis(
@@ -144,7 +148,8 @@ public record Analysis(
                     inheritanceModeOptions,
                     frequencySources,
                     pathogenicitySources,
-                    analysisSteps
+                    analysisSteps,
+                    learnedScoringOptions
             );
         }
 
@@ -182,6 +187,11 @@ public record Analysis(
 
         public Builder steps(List<AnalysisStep> analysisSteps) {
             this.analysisSteps = new ArrayList<>(analysisSteps);
+            return this;
+        }
+
+        public Builder learnedScoringOptions(LearnedScoringOptions options) {
+            this.learnedScoringOptions = Objects.requireNonNull(options);
             return this;
         }
 

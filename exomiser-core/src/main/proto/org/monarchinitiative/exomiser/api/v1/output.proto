@@ -12,6 +12,8 @@ enum OutputFormat {
     TSV_GENE = 2;
     TSV_VARIANT = 3;
     JSON = 4;
+    TSV_TABLE3_WEIGHTED = 5;
+    TSV_NATIVE_PHENOTYPE = 6;
 }
 
 message OutputOptions {

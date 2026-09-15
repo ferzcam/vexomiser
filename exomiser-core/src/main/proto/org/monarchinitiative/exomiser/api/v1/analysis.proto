@@ -40,6 +40,23 @@ message Analysis {
     repeated string frequency_sources = 8;
     repeated string pathogenicity_sources = 9;
     repeated AnalysisStep steps = 10;
+    PhenotypeScorerOptions phenotype_scorer = 11;
+    WeightedVariantOptions weighted_variants = 12;
+}
+
+message PhenotypeScorerOptions {
+    string method = 1; // PHENODIGM (default), INDIGENA, EMBEDPVP_TRANSD
+    string embeddings = 2;
+    string transd_bundle = 3;
+    string case_id = 4;
+}
+
+message WeightedVariantOptions {
+    double phenotype_weight = 1;
+    string gene_phenotypes = 2;
+    string patient_hpo = 3; // optional controlled case HPO list, one ID per line
+    string pathogenicity_missing = 4; // ZERO (default) or MEDIAN
+    string phenotype_missing = 5; // MEDIAN (default) or ZERO
 }
 
 enum InheritanceMode {
@@ -76,5 +93,4 @@ message AnalysisStep {
         ExomeWalkerPrioritiser exome_walker_prioritiser = 16;
     }
 }
-
 

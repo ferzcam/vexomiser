@@ -28,22 +28,30 @@ public class IndigenaEmbeddings {
     public static IndigenaEmbeddings load(Path tsvPath) throws IOException {
         Map<String, float[]> map = new HashMap<>();
         int dim = -1;
+        int lineNumber = 0;
         try (BufferedReader br = Files.newBufferedReader(tsvPath)) {
             String line;
             while ((line = br.readLine()) != null) {
+                lineNumber++;
                 int tab = line.indexOf('\t');
-                if (tab < 0) continue;
+                if (tab < 0 || tab == 0) throw new IOException(tsvPath + ":" + lineNumber + " invalid embedding row");
                 String iri = line.substring(0, tab);
                 String[] parts = line.substring(tab + 1).split(",");
+                if (parts.length == 0 || (dim >= 0 && parts.length != dim))
+                    throw new IOException(tsvPath + ":" + lineNumber + " inconsistent embedding dimension");
                 float[] vec = new float[parts.length];
                 for (int i = 0; i < parts.length; i++) {
-                    vec[i] = Float.parseFloat(parts[i]);
+                    try { vec[i] = Float.parseFloat(parts[i]); }
+                    catch (NumberFormatException e) { throw new IOException(tsvPath + ":" + lineNumber + " invalid embedding", e); }
+                    if (!Float.isFinite(vec[i])) throw new IOException(tsvPath + ":" + lineNumber + " non-finite embedding");
                 }
                 if (dim < 0) dim = vec.length;
-                map.put(iri, vec);
+                if (map.putIfAbsent(iri, vec) != null)
+                    throw new IOException(tsvPath + ":" + lineNumber + " duplicate embedding IRI: " + iri);
             }
         }
-        return new IndigenaEmbeddings(map, Math.max(dim, 0));
+        if (map.isEmpty()) throw new IOException("No INDIGENA embeddings in " + tsvPath);
+        return new IndigenaEmbeddings(map, dim);
     }
 
     /**

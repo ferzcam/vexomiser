@@ -30,6 +30,7 @@ import org.monarchinitiative.exomiser.core.model.GeneticInterval;
 import org.monarchinitiative.exomiser.core.model.frequency.FrequencySource;
 import org.monarchinitiative.exomiser.core.model.pathogenicity.PathogenicitySource;
 import org.monarchinitiative.exomiser.core.phenotype.service.OntologyService;
+import org.monarchinitiative.exomiser.core.phenotype.ModelScorerFactory;
 import org.monarchinitiative.exomiser.core.prioritisers.HiPhiveOptions;
 import org.monarchinitiative.exomiser.core.prioritisers.PriorityFactory;
 import org.monarchinitiative.exomiser.core.prioritisers.PriorityType;
@@ -62,6 +63,13 @@ public class AnalysisBuilder implements FluentAnalysisBuilder<Analysis> {
     private Set<PathogenicitySource> pathogenicitySources = EnumSet.noneOf(PathogenicitySource.class);
 
     private final List<AnalysisStep> analysisSteps = new ArrayList<>();
+    private ModelScorerFactory learnedModelScorerFactory;
+
+    public AnalysisBuilder learnedScoring(LearnedScoringOptions options, ModelScorerFactory scorerFactory) {
+        builder.learnedScoringOptions(options);
+        this.learnedModelScorerFactory = scorerFactory;
+        return this;
+    }
 
     AnalysisBuilder(GenomeAnalysisServiceProvider genomeAnalysisServiceProvider, PriorityFactory priorityFactory, OntologyService ontologyService) {
         this.ontologyService = ontologyService;
@@ -222,17 +230,18 @@ public class AnalysisBuilder implements FluentAnalysisBuilder<Analysis> {
     }
 
     public AnalysisBuilder addPhivePrioritiser() {
-        analysisSteps.add(priorityFactory.makePhivePrioritiser());
+        analysisSteps.add(learnedModelScorerFactory == null ? priorityFactory.makePhivePrioritiser()
+                : priorityFactory.makePhivePrioritiser(learnedModelScorerFactory));
         return this;
     }
 
     public AnalysisBuilder addHiPhivePrioritiser() {
-        analysisSteps.add(priorityFactory.makeHiPhivePrioritiser(HiPhiveOptions.defaults()));
-        return this;
+        return addHiPhivePrioritiser(HiPhiveOptions.defaults());
     }
 
     public AnalysisBuilder addHiPhivePrioritiser(HiPhiveOptions hiPhiveOptions) {
-        analysisSteps.add(priorityFactory.makeHiPhivePrioritiser(hiPhiveOptions));
+        analysisSteps.add(learnedModelScorerFactory == null ? priorityFactory.makeHiPhivePrioritiser(hiPhiveOptions)
+                : priorityFactory.makeHiPhivePrioritiser(hiPhiveOptions, learnedModelScorerFactory));
         return this;
     }
 
