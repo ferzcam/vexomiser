@@ -11,6 +11,8 @@ import java.security.NoSuchAlgorithmException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class TransdCheckpointTest {
 
@@ -78,6 +80,48 @@ class TransdCheckpointTest {
         Path entities = directory.resolve("entities.tsv");
         Files.writeString(entities, Files.readString(entities).replace("1.0,0.0", "0.5,0.0"));
         assertThrows(IOException.class, () -> TransdCheckpoint.load(directory));
+    }
+
+    @Test
+    void matchesSavedPykeenScoresWhenWorkstationFixtureIsSupplied() throws IOException {
+        String bundle = System.getProperty("transd.parity.bundle");
+        String expectedFile = System.getProperty("transd.parity.expected");
+        String actualFile = System.getProperty("transd.parity.actual");
+        assumeTrue(bundle != null || expectedFile != null || actualFile != null,
+                "workstation parity fixture paths were not supplied");
+        assertTrue(bundle != null && expectedFile != null && actualFile != null,
+                "parity requires bundle, expected, and actual output paths");
+        assertTrue(Files.exists(Path.of(bundle)) && Files.exists(Path.of(expectedFile)),
+                "parity bundle and expected scores must exist");
+        TransdCheckpoint checkpoint = TransdCheckpoint.load(Path.of(bundle));
+        var lines = Files.readAllLines(Path.of(expectedFile));
+        if (lines.isEmpty() || !"gene_iri\tcase_iri\traw_pykeen_score".equals(lines.getFirst())) {
+            throw new IOException("invalid PyKEEN parity expected header");
+        }
+        StringBuilder result = new StringBuilder("gene_iri\tcase_iri\traw_pykeen_score\traw_java_score\tabs_error\n");
+        double maxAbsoluteError = 0;
+        for (String line : lines.subList(1, lines.size())) {
+            String[] fields = line.split("\\t", -1);
+            if (fields.length != 3) {
+                throw new IOException("invalid PyKEEN parity expected row: " + line);
+            }
+            String geneId = fields[0].substring("http://mowl.borg/".length());
+            String caseId = fields[1].substring("http://mowl.borg/".length()).replace('_', ':');
+            double expected = Double.parseDouble(fields[2]);
+            double actual = checkpoint.scoreGeneCase(geneId, caseId);
+            double error = Math.abs(expected - actual);
+            maxAbsoluteError = Math.max(maxAbsoluteError, error);
+            result.append(fields[0]).append('\t').append(fields[1]).append('\t')
+                    .append(expected).append('\t').append(actual).append('\t').append(error).append('\n');
+        }
+        Path actualPath = Path.of(actualFile);
+        Files.createDirectories(actualPath.toAbsolutePath().getParent());
+        Files.writeString(actualPath, result.toString());
+        System.out.println("TransD PyKEEN/Java parity rows=" + (lines.size() - 1)
+                + " max absolute error=" + maxAbsoluteError + " actual=" + actualPath);
+        assertTrue(lines.size() > 1, "PyKEEN parity expected file has no prediction rows");
+        assertTrue(maxAbsoluteError <= 1e-5,
+                "PyKEEN/Java TransD parity exceeded 1e-5; inspect saved actual scores");
     }
 
     private void fixture(String gene, String geneProjection, String patient,
