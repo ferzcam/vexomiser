@@ -70,3 +70,8 @@ data/
 
 # Exomiser phenotype data (downloaded separately, too large for git)
 exomiser-data/
+# agent instruction files, rendered docs and PDFs: local only, never tracked
+CLAUDE.md
+AGENTS.md
+README.html
+*.pdf
