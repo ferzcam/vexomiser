@@ -188,6 +188,29 @@ def load_cases(track: int) -> pd.DataFrame:
     return df
 
 
+def apply_hpo_perturbation(df: pd.DataFrame, hpo_file: str, hpo_column: str) -> pd.DataFrame:
+    """Override each case's hpo_list from a perturbation column in a noise TSV.
+
+    The noise file (e.g. pavs_with_noise_hpo.tsv) is keyed by case_id and stores
+    perturbed HPO sets as "HP:xxxx;HP:yyyy". Cases absent from the file or NaN in
+    the chosen column get an empty hpo_list (scored 0, like missing phenotypes).
+    """
+    noise = pd.read_csv(hpo_file, sep="\t", dtype=str, usecols=["case_id", hpo_column])
+    mapping = {
+        cid: [t.split("|")[0] for t in str(val).split(";") if t]
+        for cid, val in zip(noise["case_id"], noise[hpo_column])
+        if pd.notna(val)
+    }
+    df = df.copy()
+    df["hpo_list"] = df["case_id"].map(lambda c: mapping.get(c, []))
+    n_matched = df["case_id"].isin(mapping).sum()
+    logger.info(
+        f"HPO perturbation '{hpo_column}' from {os.path.basename(hpo_file)}: "
+        f"{n_matched}/{len(df)} cases matched"
+    )
+    return df
+
+
 def load_gene_entrez_map() -> dict:
     """gene_symbol -> entrez_id (int) from PAVS_cases.tsv."""
     path = os.path.join(DATA_DIR, "pavs", "PAVS_cases.tsv")
@@ -271,7 +294,13 @@ def emit(summary_f, text):
                 "When supplied, also runs indigena_hiphive / indigena_phive / indigena_phenix.")
 @ck.option("--tag", default="", show_default=True,
            help="Optional tag appended to output filenames, e.g. 'mgi_only' or 'hp_only'.")
-def main(phenotype_data_dir, track, split, embeddings, tag):
+@ck.option("--hpo-file", default=None,
+           help="Optional TSV of perturbed HPO sets keyed by case_id "
+                "(e.g. data/pavs_with_noise_hpo.tsv). Used with --hpo-column.")
+@ck.option("--hpo-column", default=None,
+           help="Column in --hpo-file to use as the HPO set, e.g. "
+                "'hpo_terms_noisy_2'. Requires --hpo-file.")
+def main(phenotype_data_dir, track, split, embeddings, tag, hpo_file, hpo_column):
     track = int(track)
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
@@ -295,6 +324,11 @@ def main(phenotype_data_dir, track, split, embeddings, tag):
         logger.info(f"Restricted to '{split}' split: {len(cases)} cases")
     else:
         cases = all_cases
+
+    if hpo_file or hpo_column:
+        if not (hpo_file and hpo_column):
+            raise ck.UsageError("--hpo-file and --hpo-column must be given together")
+        cases = apply_hpo_perturbation(cases, hpo_file, hpo_column)
 
     gene_entrez = load_gene_entrez_map()
     logger.info(f"Track {track}: {len(cases)} cases, {len(eval_genes)} genes in pool")
